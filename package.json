@@ -24,6 +24,12 @@
 		"access": "public"
 	},
 	"sideEffects": false,
+	"files": [
+		"src",
+		"schemas",
+		"README.md",
+		"LICENSE"
+	],
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/CLDMV/slothlet-vine.git"
