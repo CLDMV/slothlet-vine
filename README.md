@@ -8,6 +8,19 @@ Vines between slothlet api trees.
 
 **Pre-implementation scaffold.** The design is proven (the forwarding mechanism runs in production node-side in a consuming project, built entirely on slothlet's public API) and the browser transposition is being spiked. The package publishes nothing yet.
 
+## Usage shape (dot notation — the slothlet idiom)
+
+```js
+import * as vine from "@cldmv/slothlet-vine";
+import { createChannel } from "@cldmv/slothlet-vine/transport/post-message";
+
+const channel = createChannel(worker);
+vine.grow(api, channel); // mount the far tree's leaves into this instance
+vine.serve(api, channel); // serve this instance's leaves to the far side
+```
+
+Single-word leaves, context carried by the namespace — never `growVine()`-style camelCase that repeats the package's own name.
+
 ## Design
 
 - **Async-only forwarding**: calls serialize to `{ type: "call", callId, path, args, context }` frames; correlation by `callId`; settle-once; per-call budget timers; a dead far side force-settles every in-flight call with a coded error instead of hanging.

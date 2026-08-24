@@ -27,8 +27,8 @@ const NOT_IMPLEMENTED = (name) => {
  * @param {Channel} channel
  * @param {object} [options]
  */
-export function growVine(api, channel, options) {
-	NOT_IMPLEMENTED("growVine");
+export function grow(___api, ___channel, ___options) {
+	NOT_IMPLEMENTED("grow");
 }
 
 /**
@@ -38,6 +38,6 @@ export function growVine(api, channel, options) {
  * @param {Channel} channel
  * @param {object} [options]
  */
-export function serveVine(api, channel, options) {
-	NOT_IMPLEMENTED("serveVine");
+export function serve(___api, ___channel, ___options) {
+	NOT_IMPLEMENTED("serve");
 }
