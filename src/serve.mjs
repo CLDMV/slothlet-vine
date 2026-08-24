@@ -238,6 +238,9 @@ async function collectLeaves(api, options) {
  * publish `intl.café.apply` in place of `intl.café`, handing the far side `Function.prototype.apply`
  * bound to a real leaf. `Reflect.apply` reads no property and leaves the records untouched (also
  * verified) — and, incidentally, cannot be hijacked by a leaf that shadows `apply` with its own.
+ * Reported as CLDMV/slothlet#304 and fixed by CLDMV/slothlet#307; `Reflect.apply` is kept regardless,
+ * because it is the idiomatic this-arg + args-array dispatch AND shadow-proof — strictly better than
+ * `leaf.apply` on a fixed slothlet too.
  * @param {object} api - The slothlet instance.
  * @param {string} path - Validated dotted path.
  * @param {unknown[]} args - Call arguments.

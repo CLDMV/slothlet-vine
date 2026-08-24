@@ -93,6 +93,8 @@ export async function grow(api, channel, options = {}) {
 	// moduleID containing a COLON (`vine:<uuid>`) is accepted by `add()` but is then silently unknown
 	// to `remove()` — the call resolves, reports nothing, and every stub stays mounted AND callable.
 	// A hyphenated id removes cleanly. `close()` verifies the outcome regardless (see below).
+	// Reported as CLDMV/slothlet#303 and fixed by CLDMV/slothlet#306; the hyphen is kept anyway — it is
+	// zero-cost, works on both patched and unpatched slothlet, and nothing benefits from a colon.
 	const moduleID = `vine-${nonce}`;
 	const pending = new PendingTable(nonce);
 

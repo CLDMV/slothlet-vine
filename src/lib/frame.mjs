@@ -17,6 +17,11 @@
  * own reserved roots (`slothlet` / `shutdown` / `destroy` are refused with
  * `INVALID_CONFIG_API_PATH_INVALID`), so the gap is exactly the prototype chain — which is what
  * {@link UNSAFE_SEGMENTS} closes.
+ *
+ * Reported upstream as CLDMV/slothlet#302 and being hardened in slothlet by CLDMV/slothlet#305, but
+ * this guard STAYS regardless of the slothlet version: it validates UNTRUSTED remote surface paths
+ * at vine's own boundary, which is vine's responsibility to enforce independent of what any
+ * downstream `add()` does (and vine's peer floor spans slothlet versions that predate the fix).
  */
 import { toWire } from "./errors.mjs";
 
