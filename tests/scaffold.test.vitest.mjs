@@ -12,14 +12,14 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { growVine, serveVine } from "../src/index.mjs";
+import { grow, serve } from "../src/index.mjs";
 
 const TRANSPORTS = ["loopback", "post-message", "worker-threads", "process", "websocket"];
 
 describe("package surface", () => {
-	it("root export exposes growVine + serveVine as functions", () => {
-		expect(typeof growVine).toBe("function");
-		expect(typeof serveVine).toBe("function");
+	it("root export exposes grow + serve as functions", () => {
+		expect(typeof grow).toBe("function");
+		expect(typeof serve).toBe("function");
 	});
 
 	it.each(TRANSPORTS)("transport subpath '%s' resolves and exposes createChannel", async (name) => {
@@ -36,14 +36,14 @@ describe("package surface", () => {
 });
 
 describe("stubs fail loudly (pre-release contract)", () => {
-	it("growVine throws a not-implemented error naming itself", () => {
-		expect(() => growVine({}, { send() {}, onMessage() {} })).toThrowError(/growVine/);
-		expect(() => growVine()).toThrowError(/not implemented/i);
+	it("grow throws a not-implemented error naming itself", () => {
+		expect(() => grow({}, { send() {}, onMessage() {} })).toThrowError(/grow/);
+		expect(() => grow()).toThrowError(/not implemented/i);
 	});
 
-	it("serveVine throws a not-implemented error naming itself", () => {
-		expect(() => serveVine({}, { send() {}, onMessage() {} })).toThrowError(/serveVine/);
-		expect(() => serveVine()).toThrowError(/not implemented/i);
+	it("serve throws a not-implemented error naming itself", () => {
+		expect(() => serve({}, { send() {}, onMessage() {} })).toThrowError(/serve/);
+		expect(() => serve()).toThrowError(/not implemented/i);
 	});
 
 	it.each(TRANSPORTS)("transport '%s' createChannel throws a not-implemented error naming its transport", async (name) => {
