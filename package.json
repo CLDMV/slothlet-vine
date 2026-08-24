@@ -1,0 +1,48 @@
+{
+	"name": "@cldmv/slothlet-vine",
+	"version": "0.1.0",
+	"description": "Vines between slothlet api trees — location-transparent forwarding leaves over pluggable transports (Web Worker postMessage, worker_threads, process IPC, WebSocket), permission-gated by slothlet itself.",
+	"type": "module",
+	"license": "Apache-2.0",
+	"author": {
+		"name": "Shinrai",
+		"company": "CLDMV",
+		"email": "git+npm@cldmv.net",
+		"url": "https://cldmv.net"
+	},
+	"contributors": [{ "name": "CLDMV", "url": "https://github.com/CLDMV" }],
+	"funding": { "type": "github", "url": "https://github.com/sponsors/shinrai" },
+	"publishConfig": { "access": "public" },
+	"sideEffects": false,
+	"repository": { "type": "git", "url": "git+https://github.com/CLDMV/slothlet-vine.git" },
+	"bugs": { "url": "https://github.com/CLDMV/slothlet-vine/issues" },
+	"homepage": "https://github.com/CLDMV/slothlet-vine#readme",
+	"keywords": [
+		"slothlet",
+		"rpc",
+		"forwarding",
+		"proxy",
+		"web-worker",
+		"worker_threads",
+		"postmessage",
+		"isolation",
+		"transport",
+		"channel"
+	],
+	"exports": {
+		".": "./src/index.mjs",
+		"./transport/loopback": "./src/transport/loopback.mjs",
+		"./transport/post-message": "./src/transport/post-message.mjs",
+		"./transport/worker-threads": "./src/transport/worker-threads.mjs",
+		"./transport/process": "./src/transport/process.mjs",
+		"./transport/websocket": "./src/transport/websocket.mjs",
+		"./schemas/*": "./schemas/*",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "echo \"no build step\""
+	},
+	"peerDependencies": {
+		"@cldmv/slothlet": ">=3.14.0"
+	}
+}

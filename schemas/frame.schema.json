@@ -1,0 +1,29 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://github.com/CLDMV/slothlet-vine/schemas/frame.schema.json",
+	"title": "slothlet-vine frame (v1, DRAFT)",
+	"description": "The wire frame exchanged over a Channel. DRAFT — finalized with the spike.",
+	"oneOf": [
+		{
+			"type": "object",
+			"required": ["type", "callId", "path", "args"],
+			"properties": {
+				"type": { "const": "call" },
+				"callId": { "type": "string" },
+				"path": { "type": "string", "description": "dotted leaf path, e.g. exts.foo.bar" },
+				"args": { "type": "array" },
+				"context": { "type": "object" }
+			}
+		},
+		{
+			"type": "object",
+			"required": ["type", "callId"],
+			"properties": {
+				"type": { "enum": ["result", "error"] },
+				"callId": { "type": "string" },
+				"value": {},
+				"error": { "type": "object" }
+			}
+		}
+	]
+}
