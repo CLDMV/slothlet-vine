@@ -11,7 +11,7 @@
  * with no leaked handles or held ports, and every port is ephemeral — never a fixed one.
  */
 import { describe, it, expect, afterEach, afterAll } from "vitest";
-import { once } from "node:events";
+import { once, EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
@@ -110,28 +110,30 @@ afterAll(async () => {
  * @returns {Promise<{serveApi: object, growApi: object, link: object, serving: object, serverSocket: object, clientSocket: object, wss: object}>} The wired pair.
  */
 async function wire({ permissions, growOptions, serveOptions, serveDir = SERVE_DIR } = {}) {
+	// Every teardown is registered IMMEDIATELY after the resource it tears down is created — not
+	// batched at the end — so a failure partway through (e.g. grow()'s handshake budget expiring)
+	// still lets everything already created be torn down instead of leaking until afterAll's backstop.
 	const serveApi = await slothlet({ base: serveDir, silent: true });
+	teardown.push(async () => {
+		await serveApi.slothlet?.shutdown?.();
+	});
 	const growApi = await slothlet({ base: GROW_DIR, silent: true, ...(permissions ? { permissions } : {}) });
+	teardown.push(async () => {
+		await growApi.slothlet?.shutdown?.();
+	});
 
 	const pair = await standUpPair();
+	teardown.push(async () => {
+		await tearDownPair(pair);
+	});
 	const far = createChannel(pair.serverSocket); // serve end — the server-accepted socket
 	const near = createChannel(pair.clientSocket); // grow end — the client socket
 
 	const serving = await serve(serveApi, far, serveOptions);
-	const link = await grow(growApi, near, { budgetMs: 5000, ...growOptions });
-
-	teardown.push(async () => {
-		await serveApi.slothlet?.shutdown?.();
-	});
-	teardown.push(async () => {
-		await growApi.slothlet?.shutdown?.();
-	});
-	teardown.push(async () => {
-		await tearDownPair(pair);
-	});
 	teardown.push(() => {
 		serving.close();
 	});
+	const link = await grow(growApi, near, { budgetMs: 5000, ...growOptions });
 	teardown.push(async () => {
 		await link.close();
 	});
@@ -270,6 +272,173 @@ describe("websocket specifics", () => {
 				// already gone
 			}
 		}
+	});
+});
+
+/**
+ * A minimal EventEmitter standing in for the `ws` socket surface (`send`/`on`/`close`/`readyState`) —
+ * for validation and edge cases a real socket over a real network hop cannot be made to produce on
+ * demand: a stray 'open' while not actually OPEN, a non-Error 'error' payload, an un-decodable message
+ * shape, a duplicate/late close.
+ * @returns {EventEmitter & {readyState: number, send: Function, close: Function}} The fake socket.
+ */
+function fakeSocket() {
+	const socket = new EventEmitter();
+	socket.readyState = 1; // OPEN by default (0 CONNECTING, 1 OPEN, 2 CLOSING, 3 CLOSED — the WHATWG enum)
+	socket.send = () => {};
+	socket.close = () => {};
+	return socket;
+}
+
+describe("websocket transport specifics (fake socket)", () => {
+	it("flushPending guards against a stray 'open' firing while the socket isn't actually OPEN", () => {
+		const sent = [];
+		const socket = fakeSocket();
+		socket.readyState = 0; // CONNECTING
+		socket.send = (text) => sent.push(text);
+		const channel = createChannel(socket);
+		channel.send({ type: "call", callId: "1", path: "p", args: [] }); // queued, still CONNECTING
+		socket.readyState = 2; // CLOSING — force a non-OPEN state before the (stray) 'open' fires
+		socket.emit("open");
+		expect(sent).toEqual([]); // flushPending must not flush into a socket that isn't OPEN
+	});
+
+	it("stringifies a non-Error value from the socket's 'error' event", () => {
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		let info;
+		channel.onClose((i) => {
+			info = i;
+		});
+		socket.emit("error", "raw string failure");
+		expect(info).toMatchObject({ reason: "error", error: "raw string failure" });
+	});
+
+	it("is a silent no-op when JSON.stringify produces undefined (send(undefined) directly)", () => {
+		const sent = [];
+		const socket = fakeSocket();
+		socket.send = (text) => sent.push(text);
+		const channel = createChannel(socket);
+		expect(() => channel.send(undefined)).not.toThrow();
+		expect(sent).toEqual([]);
+	});
+
+	it("ignores a non-function onMessage/onClose registration", () => {
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		expect(() => channel.onMessage(123)).not.toThrow();
+		expect(() => channel.onClose("nope")).not.toThrow();
+		expect(() => socket.emit("message", JSON.stringify({ type: "result", callId: "c1", value: 1 }))).not.toThrow();
+		expect(() => socket.emit("close", 1000, Buffer.from(""))).not.toThrow();
+	});
+
+	it("toText: decodes a plain string message directly", () => {
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		const seen = [];
+		channel.onMessage((m) => seen.push(m));
+		socket.emit("message", JSON.stringify({ type: "result", callId: "str", value: 1 }));
+		expect(seen).toEqual([{ type: "result", callId: "str", value: 1 }]);
+	});
+
+	it("toText: decodes a raw ArrayBuffer message", () => {
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		const seen = [];
+		channel.onMessage((m) => seen.push(m));
+		const text = JSON.stringify({ type: "result", callId: "ab", value: 2 });
+		const buf = new TextEncoder().encode(text).buffer;
+		socket.emit("message", buf);
+		expect(seen).toEqual([{ type: "result", callId: "ab", value: 2 }]);
+	});
+
+	it("toText: decodes a fragmented binary message (an array of Buffer parts)", () => {
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		const seen = [];
+		channel.onMessage((m) => seen.push(m));
+		const text = JSON.stringify({ type: "result", callId: "frag", value: 3 });
+		const half = Math.ceil(text.length / 2);
+		socket.emit("message", [Buffer.from(text.slice(0, half)), Buffer.from(text.slice(half))]);
+		expect(seen).toEqual([{ type: "result", callId: "frag", value: 3 }]);
+	});
+
+	it("toText: drops an unrecognized payload shape instead of throwing", () => {
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		const seen = [];
+		channel.onMessage((m) => seen.push(m));
+		expect(() => socket.emit("message", 12345)).not.toThrow(); // a bare number — no matching shape
+		expect(seen).toEqual([]);
+	});
+
+	it("toText: substitutes an empty string for one unrecognized fragment, not the whole message", () => {
+		// A fragmented binary message is joined fragment-by-fragment; one fragment `toText` cannot
+		// decode contributes "" rather than aborting the whole join (the `?? ""` inside the map).
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		const seen = [];
+		channel.onMessage((m) => seen.push(m));
+		const text = JSON.stringify({ type: "result", callId: "c1", value: 1 });
+		socket.emit("message", [Buffer.from(text), 42]); // the whole valid text, plus one bad fragment
+		expect(seen).toEqual([{ type: "result", callId: "c1", value: 1 }]);
+	});
+
+	it("reasonText: falls back to an empty string when the close reason can't be decoded", () => {
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		let info;
+		channel.onClose((i) => {
+			info = i;
+		});
+		socket.emit("close", 1000, undefined); // no reason payload — toText(undefined) is null
+		expect(info).toMatchObject({ reason: "peer-closed", code: 1000, detail: "" });
+	});
+
+	it("toText: drops a payload that throws while being inspected, instead of throwing", () => {
+		// A value whose prototype-chain walk throws — `instanceof ArrayBuffer` triggers it, exercising
+		// toText's own catch, distinctly from the no-match fallback above.
+		const poisoned = new Proxy(
+			{},
+			{
+				getPrototypeOf() {
+					throw new Error("boom");
+				}
+			}
+		);
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		const seen = [];
+		channel.onMessage((m) => seen.push(m));
+		expect(() => socket.emit("message", poisoned)).not.toThrow();
+		expect(seen).toEqual([]);
+	});
+});
+
+describe("e2e over websocket — a handshake failure still lets every already-created resource be torn down", () => {
+	it("does not leak the socket pair or the slothlet instances when grow() never sees a surface", async () => {
+		const serveApi = await slothlet({ base: SERVE_DIR, silent: true });
+		const growApi = await slothlet({ base: GROW_DIR, silent: true });
+		const pair = await standUpPair();
+		const near = createChannel(pair.clientSocket);
+		// Deliberately never serve() the far side — grow()'s handshake has nothing to receive and must
+		// fail on its own budget rather than hang.
+
+		let caught;
+		try {
+			await grow(growApi, near, { handshakeMs: 50 });
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(VineError);
+		expect(caught.code).toBe(CODES.BUDGET);
+
+		// Every resource created before the failure is still cleanly disposable — the property wire()'s
+		// own eager teardown registration now guarantees on every path, not just the success path.
+		near.close();
+		await tearDownPair(pair);
+		await serveApi.slothlet.shutdown();
+		await growApi.slothlet.shutdown();
 	});
 });
 

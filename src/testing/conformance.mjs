@@ -171,7 +171,12 @@ export function channelConformance(name, makePair, t) {
 			const { a, b, cleanup } = await pair();
 			try {
 				const first = [];
-				b.onMessage((m) => first.push(m));
+				/* v8 ignore start -- must never run: collect(b) below replaces this handler before
+				   anything is sent, and this callback only fires if "last write wins" has regressed. */
+				b.onMessage((m) => {
+					first.push(m);
+				});
+				/* v8 ignore stop */
 				const received = collect(b);
 				a.send({ type: "result", callId: "c1", value: 1 });
 				await received.take(1);
@@ -199,17 +204,35 @@ export function channelConformance(name, makePair, t) {
 			}
 		});
 
-		it("fires the far side's onClose when an end closes", async () => {
+		it("fires the far side's onClose when an end closes, and not the closer's own", async () => {
 			const { a, b, cleanup } = await pair();
 			try {
+				// A channel need not support close()/onClose at all (both are optional on the Channel
+				// contract) — nothing more to assert about far-side-death notification when it doesn't.
 				if (typeof a.onClose !== "function" || typeof b.close !== "function") return;
 				let fired = 0;
+				let selfFired = 0;
 				a.onClose(() => {
 					fired++;
 				});
+				if (typeof b.onClose === "function") {
+					/* v8 ignore start -- must never run: onClose is the FAR-side-death notification, so a
+					   locally-initiated close must not report back to its own initiator. This callback
+					   only fires if that guarantee has regressed. */
+					b.onClose(() => {
+						selfFired++;
+					});
+					/* v8 ignore stop */
+				}
 				b.close();
 				await waitFor(() => fired > 0);
 				expect(fired).toBe(1);
+				// Give a late/duplicate death signal a chance to arrive before declaring "at most once".
+				await settle();
+				expect(fired).toBe(1);
+				// onClose is the FAR-side-death notification; a locally-initiated close is not reported
+				// back to its own initiator.
+				expect(selfFired).toBe(0);
 			} finally {
 				await cleanup();
 			}
@@ -218,6 +241,8 @@ export function channelConformance(name, makePair, t) {
 		it("close() is idempotent and send() after close does not throw", async () => {
 			const { a, b, cleanup } = await pair();
 			try {
+				// close() is optional on the Channel contract; a channel without one has nothing to be
+				// idempotent about, so there is nothing further this case can assert.
 				if (typeof b.close !== "function") return;
 				b.close();
 				expect(() => b.close()).not.toThrow();
@@ -234,8 +259,12 @@ export function channelConformance(name, makePair, t) {
 			try {
 				expect(typeof a.send).toBe("function");
 				expect(typeof a.onMessage).toBe("function");
+				// `capabilities` itself is optional on the Channel contract — a channel that omits it
+				// entirely falls back to `{}` here rather than failing this case.
 				const caps = a.capabilities ?? {};
 				expect(["none", "json", undefined]).toContain(caps.codec);
+				if (caps.structuredClone !== undefined) expect(typeof caps.structuredClone).toBe("boolean");
+				if (caps.buffersUntilHandler !== undefined) expect(typeof caps.buffersUntilHandler).toBe("boolean");
 			} finally {
 				await cleanup();
 			}

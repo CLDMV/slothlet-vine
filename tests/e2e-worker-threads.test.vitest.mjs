@@ -19,6 +19,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { MessageChannel, Worker } from "node:worker_threads";
+import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import slothlet from "@cldmv/slothlet";
@@ -55,6 +56,100 @@ channelConformance(
 	},
 	{ describe, it, expect }
 );
+
+/**
+ * A minimal EventEmitter standing in for the `postMessage`/`on` surface both worker-threads endpoints
+ * consume — for validation and edge cases a real `Worker`/`MessagePort` cannot be made to produce on
+ * demand (a non-`DataCloneError` `postMessage` throw, a double death signal, an ownership assertion).
+ * @returns {EventEmitter & {postMessage: Function, close: Function, terminate: Function}} The fake target.
+ */
+function fakeTarget() {
+	const target = new EventEmitter();
+	target.postMessage = () => {};
+	target.close = () => {};
+	target.terminate = () => {};
+	return target;
+}
+
+describe("worker-threads transport specifics", () => {
+	it("rejects a non-Worker-shaped target to createChannel", () => {
+		expect(() => createChannel(null)).toThrow(TypeError);
+		expect(() => createChannel({})).toThrow(TypeError);
+		expect(() => createChannel({ postMessage() {} })).toThrow(TypeError); // no on()
+	});
+
+	it("rejects createParentChannel() with no usable port (outside a worker, no argument)", () => {
+		// On the main thread the ambient parentPort is null — exactly the scenario this guard exists
+		// for: the helper called from outside a worker with nothing passed in.
+		expect(() => createParentChannel()).toThrow(TypeError);
+		expect(() => createParentChannel(null)).toThrow(TypeError);
+		expect(() => createParentChannel({})).toThrow(TypeError); // no postMessage/on
+	});
+
+	it("parent-side close() detaches listeners but never closes/terminates the wrapped worker", () => {
+		// Ownership: the caller made the worker, so only the caller ends it. This is the ROOT CAUSE of
+		// the parent side's close() not notifying the far side — the wrapped target is never touched.
+		const calls = [];
+		const target = fakeTarget();
+		target.close = () => calls.push("close");
+		target.terminate = () => calls.push("terminate");
+		const channel = createChannel(target);
+		channel.close();
+		expect(calls).toEqual([]);
+		expect(() => channel.close()).not.toThrow(); // idempotent
+	});
+
+	it("child-side close() DOES close the wrapped port (ownsTarget: true)", () => {
+		const calls = [];
+		const port = fakeTarget();
+		port.close = () => calls.push("close");
+		const channel = createParentChannel(port);
+		channel.close();
+		expect(calls).toEqual(["close"]);
+	});
+
+	it("treats the parent-side Worker's 'error' event as far-side death", () => {
+		const target = fakeTarget();
+		const channel = createChannel(target);
+		let info;
+		channel.onClose((i) => {
+			info = i;
+		});
+		target.emit("error", new Error("worker crashed"));
+		expect(info).toMatchObject({ reason: "error" });
+		expect(info.error).toBeInstanceOf(Error);
+	});
+
+	it("fires onClose at most once, even when two death events arrive", () => {
+		const target = fakeTarget();
+		const channel = createChannel(target);
+		let fired = 0;
+		channel.onClose(() => {
+			fired++;
+		});
+		target.emit("exit", 1);
+		target.emit("error", new Error("late — must not double-fire"));
+		expect(fired).toBe(1);
+	});
+
+	it("ignores a non-function onMessage/onClose registration", () => {
+		const target = fakeTarget();
+		const channel = createChannel(target);
+		expect(() => channel.onMessage(123)).not.toThrow();
+		expect(() => channel.onClose("nope")).not.toThrow();
+		expect(() => target.emit("message", { type: "result", callId: "c1", value: 1 })).not.toThrow();
+		expect(() => target.emit("exit", 0)).not.toThrow();
+	});
+
+	it("swallows a postMessage throw that is NOT a DataCloneError (a close race, not a per-call refusal)", () => {
+		const target = fakeTarget();
+		target.postMessage = () => {
+			throw new Error("worker is terminating"); // no .name === "DataCloneError" — a close race
+		};
+		const channel = createChannel(target);
+		expect(() => channel.send({ type: "call", callId: "1", path: "p", args: [] })).not.toThrow();
+	});
+});
 
 /** Instances, workers and links to tear down after each test. @type {Array<() => Promise<void>>} */
 let teardown = [];

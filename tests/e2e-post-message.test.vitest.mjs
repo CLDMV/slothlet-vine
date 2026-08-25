@@ -77,11 +77,14 @@ afterEach(async () => {
  * @returns {Promise<{serveApi: object, growApi: object, link: object, serving: object, near: object, far: object}>} The wired pair.
  */
 async function wire({ permissions, growOptions, serveOptions, serveDir = SERVE_DIR } = {}) {
+	// Every teardown is registered IMMEDIATELY after the resource it tears down is created — not
+	// batched at the end — so a failure partway through (e.g. serve()/grow() throwing) still lets
+	// everything already created be torn down instead of leaking until afterAll's backstop.
 	const serveApi = await slothlet({ base: serveDir, silent: true });
-	const growApi = await slothlet({ base: GROW_DIR, silent: true, ...(permissions ? { permissions } : {}) });
 	teardown.push(async () => {
 		await serveApi.slothlet?.shutdown?.();
 	});
+	const growApi = await slothlet({ base: GROW_DIR, silent: true, ...(permissions ? { permissions } : {}) });
 	teardown.push(async () => {
 		await growApi.slothlet?.shutdown?.();
 	});
@@ -89,18 +92,54 @@ async function wire({ permissions, growOptions, serveOptions, serveDir = SERVE_D
 	const { port1, port2 } = new MessageChannel();
 	const near = createChannel(port1);
 	const far = createChannel(port2);
-
-	const growing = grow(growApi, near, { budgetMs: 5000, ...growOptions });
-	const serving = await serve(serveApi, far, serveOptions);
-	const link = await growing;
-	teardown.push(async () => {
-		await link.close();
-		serving.close();
+	teardown.push(() => {
 		near.close();
 		far.close();
 	});
+
+	// grow() is started BEFORE serve() so its receive handler is registered before the surface frame
+	// is posted (see the file header) — .catch a no-op here so a later serve() throw cannot leave this
+	// promise unhandled; `link = await growing` below still observes the real outcome.
+	const growing = grow(growApi, near, { budgetMs: 5000, ...growOptions });
+	growing.catch(() => {});
+	const serving = await serve(serveApi, far, serveOptions);
+	teardown.push(() => {
+		serving.close();
+	});
+	const link = await growing;
+	teardown.push(async () => {
+		await link.close();
+	});
 	return { serveApi, growApi, link, serving, near, far };
 }
+
+describe("e2e over post-message — a handshake failure still lets every already-created resource be torn down", () => {
+	it("does not leak the ports or the slothlet instances when grow() never sees a surface", async () => {
+		const serveApi = await slothlet({ base: SERVE_DIR, silent: true });
+		const growApi = await slothlet({ base: GROW_DIR, silent: true });
+		const { port1, port2 } = new MessageChannel();
+		const near = createChannel(port1);
+		const far = createChannel(port2);
+		// Deliberately never serve() the far port — grow()'s handshake has nothing to receive and must
+		// fail on its own budget rather than hang.
+
+		let caught;
+		try {
+			await grow(growApi, near, { handshakeMs: 50 });
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(VineError);
+		expect(caught.code).toBe(CODES.BUDGET);
+
+		// Every resource created before the failure is still cleanly disposable — the property wire()'s
+		// own eager teardown registration now guarantees on every path, not just the success path.
+		near.close();
+		far.close();
+		await serveApi.slothlet.shutdown();
+		await growApi.slothlet.shutdown();
+	});
+});
 
 describe("e2e over post-message — the served surface", () => {
 	it("publishes only CALLABLE leaves and mounts them at identical paths", async () => {
@@ -291,6 +330,42 @@ describe("e2e over post-message — data-only return values are rejected serve-s
 });
 
 // ── Transport-specific unit assertions (the branches the wired e2e cannot reach on its own) ───────
+
+/**
+ * A minimal `addEventListener`-style port whose listeners are captured for direct, manual invocation —
+ * so a message/death event can be replayed AFTER `removeEventListener` already ran, reproducing a race
+ * (an event already in flight when `close()` synchronously detaches) that a real port cannot be made to
+ * reproduce on demand.
+ * @returns {{postMessage: Function, addEventListener: Function, removeEventListener: Function, close: Function, _fire: Function, _fireRaced: Function}}
+ */
+function fakePort() {
+	/** @type {Map<string, Set<Function>>} What is actually attached right now. */
+	const live = new Map();
+	/** @type {Map<string, Function[]>} Every listener ever attached, for racing a removed one. */
+	const everAttached = new Map();
+	return {
+		postMessage() {},
+		addEventListener(event, fn) {
+			if (!live.has(event)) live.set(event, new Set());
+			live.get(event).add(fn);
+			if (!everAttached.has(event)) everAttached.set(event, []);
+			everAttached.get(event).push(fn);
+		},
+		removeEventListener(event, fn) {
+			live.get(event)?.delete(fn);
+		},
+		close() {},
+		/** Dispatch through the LIVE listener set — an ordinary, currently-attached event. */
+		_fire(event, payload) {
+			for (const fn of live.get(event) ?? []) fn(payload);
+		},
+		/** Invoke the most recently attached listener directly, even once removed — the race. */
+		_fireRaced(event, payload) {
+			const fns = everAttached.get(event) ?? [];
+			fns[fns.length - 1]?.(payload);
+		}
+	};
+}
 
 describe("post-message transport specifics", () => {
 	it("declares its capabilities on both ends", () => {
@@ -489,5 +564,50 @@ describe("post-message transport specifics", () => {
 		expect(fired).toBe(1);
 		expect(reason).toBe("close");
 		a.close();
+	});
+
+	it("drops a message that arrives after a local close() (a race the listener removal loses)", () => {
+		const port = fakePort();
+		const channel = createChannel(port);
+		const seen = [];
+		channel.onMessage((m) => seen.push(m));
+		channel.close();
+		expect(() => port._fireRaced("message", { data: { type: "result", callId: "late", value: 1 } })).not.toThrow();
+		expect(seen).toEqual([]);
+	});
+
+	it("ignores a death event once already fired, and once already closed", () => {
+		// A duplicate/late signal after a REAL close has already been reported.
+		const port = fakePort();
+		const channel = createChannel(port);
+		let fired = 0;
+		channel.onClose(() => {
+			fired++;
+		});
+		port._fire("close");
+		port._fire("close");
+		expect(fired).toBe(1);
+
+		// A death event that was already in flight when a LOCAL close() ran.
+		const port2 = fakePort();
+		const channel2 = createChannel(port2);
+		let fired2 = 0;
+		channel2.onClose(() => {
+			fired2++;
+		});
+		channel2.close();
+		expect(() => port2._fireRaced("close", undefined)).not.toThrow();
+		expect(fired2).toBe(0);
+	});
+
+	it("ignores invalid entries in a custom deathEvents list, and still wires the valid ones", () => {
+		const port = fakePort();
+		const channel = createChannel(port, { deathEvents: [123, "", "custom"] });
+		let info;
+		channel.onClose((i) => {
+			info = i;
+		});
+		expect(() => port._fire("custom")).not.toThrow();
+		expect(info).toMatchObject({ reason: "custom" });
 	});
 });

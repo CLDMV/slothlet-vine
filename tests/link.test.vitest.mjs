@@ -5,7 +5,7 @@
  * The correlation machinery in isolation: settle-once, budget timers, bulk settle, and the two
  * misuse guards (`assertChannel` / `assertApi`).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { PendingTable, assertApi, assertChannel, makeNonce, onCloseSafe } from "../src/lib/link.mjs";
 import { CODES, VineError } from "../src/lib/errors.mjs";
 
@@ -119,6 +119,25 @@ describe("PendingTable settling", () => {
 			expect(pending.has(id)).toBe(true);
 			pending.resolve(id, "ok");
 			await expect(promise).resolves.toBe("ok");
+		}
+	});
+
+	it("tolerates a budget timer handle with no unref() (a browser-style setTimeout)", async () => {
+		// Node's setTimeout returns a Timeout with unref(); a browser's returns a bare number. The
+		// `timer && typeof timer.unref === "function"` guard exists for that second case — reproduce it
+		// faithfully by wrapping the real timer (so it still fires) in a handle that lacks unref(),
+		// rather than asserting a tautology.
+		const realSetTimeout = globalThis.setTimeout;
+		vi.stubGlobal("setTimeout", (fn, ms) => ({ id: realSetTimeout(fn, ms) }));
+		try {
+			const pending = table();
+			const id = pending.nextCallId();
+			// Let the budget expire naturally (never resolved early) — clearTimeout is never invoked on
+			// this fake handle, so there is nothing to mismatch against the real underlying timer.
+			const promise = pending.open(id, { path: "a.slow", budgetMs: 10 });
+			await expect(promise).rejects.toMatchObject({ code: CODES.BUDGET });
+		} finally {
+			vi.unstubAllGlobals();
 		}
 	});
 });

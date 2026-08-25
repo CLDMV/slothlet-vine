@@ -11,7 +11,7 @@
  * These use FAKE api and channel objects on purpose — the point is to drive states a real slothlet
  * instance and a healthy loopback pair cannot be made to produce on demand.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { grow } from "../src/grow.mjs";
 import { serve } from "../src/serve.mjs";
 import { CODES } from "../src/lib/errors.mjs";
@@ -426,6 +426,32 @@ describe("grow — mount and teardown edge cases", () => {
 	it("works over a transport with no onClose at all", async () => {
 		const api = fakeApi();
 		const link = await grow(api, fakeChannel({ syncSurface: true, noOnClose: true }));
+		expect(link.leaves).toEqual(["far.leaf"]);
+		await link.close();
+	});
+
+	it("tolerates a handshake timer handle with no unref() (a browser-style setTimeout)", async () => {
+		// Node's setTimeout returns a Timeout with unref(); a browser's returns a bare number — the
+		// `timer && typeof timer.unref === "function"` guard exists for that case. Wrap the real timer
+		// (so it still fires) in a handle that lacks unref(), rather than asserting a tautology.
+		const realSetTimeout = globalThis.setTimeout;
+		vi.stubGlobal("setTimeout", (fn, ms) => ({ id: realSetTimeout(fn, ms) }));
+		try {
+			const api = fakeApi();
+			// No syncSurface and no syncClose — only the handshake timer can settle this call.
+			await expect(grow(api, fakeChannel(), { handshakeMs: 10 })).rejects.toMatchObject({ code: CODES.BUDGET });
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("ignores a well-formed 'call' frame arriving grow-side — not surface/result/error", async () => {
+		const api = fakeApi();
+		const channel = fakeChannel({ syncSurface: true, leaves: ["far.leaf"] });
+		const link = await grow(api, channel);
+		// A channel is directional; grow only expects surface/result/error. A stray (or hostile) 'call'
+		// frame matches none of those and must be silently ignored, not throw or corrupt pending state.
+		expect(() => channel.deliver({ type: "call", callId: "stray", path: "far.leaf", args: [] })).not.toThrow();
 		expect(link.leaves).toEqual(["far.leaf"]);
 		await link.close();
 	});

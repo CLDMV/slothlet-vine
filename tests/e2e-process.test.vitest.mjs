@@ -227,6 +227,47 @@ describe("process transport specifics", () => {
 		expect(closedInfo).toMatchObject({ reason: "error" });
 		expect(closedInfo.error.code).toBe("ERR_IPC_CHANNEL_CLOSED");
 	});
+
+	it("reports an ASYNCHRONOUS delivery failure (the send callback's err) as far-side death", async () => {
+		// Reached only asynchronously, on a channel that closed under us AFTER the synchronous send
+		// returned — distinct from the synchronous serialization-refusal throw covered above, and
+		// unconditionally death (no classification: the comment on process.mjs's send() explains why).
+		const target = new EventEmitter();
+		target.connected = true;
+		target.send = (message, cb) => {
+			setImmediate(() => cb(new Error("delivery failed")));
+		};
+		const channel = createChannel(target);
+		let closedInfo;
+		channel.onClose((info) => {
+			closedInfo = info;
+		});
+		channel.send({ type: "call", callId: "1", path: "p", args: [] });
+		await tick();
+		expect(closedInfo).toMatchObject({ reason: "error" });
+		expect(closedInfo.error).toBeInstanceOf(Error);
+	});
+
+	it("ignores a non-function onMessage/onClose registration", () => {
+		const { a } = makeFakeChildPair();
+		const parent = createChannel(a);
+		expect(() => parent.onMessage(123)).not.toThrow();
+		expect(() => parent.onClose("nope")).not.toThrow();
+	});
+
+	it("child-side close() does not disconnect the shared IPC channel (leaves it to the parent)", () => {
+		// Ownership: the parent already learns of the child's exit on its own 'exit' event, so the
+		// child need not — and must not — tear down the channel itself. This is the ROOT CAUSE of the
+		// child side's close() not notifying the parent.
+		const proc = new EventEmitter();
+		proc.connected = true;
+		proc.send = () => {};
+		proc.disconnect = () => {
+			throw new Error("child must not disconnect the shared IPC channel");
+		};
+		const child = createParentChannel(proc);
+		expect(() => child.close()).not.toThrow();
+	});
 });
 
 /* ────────────────────────────────────────────────────────────────────────────────────────────────
