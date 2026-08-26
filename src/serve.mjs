@@ -167,10 +167,19 @@ export async function serve(api, channel, options = {}) {
 		 * `channel.close()`, because the transport is owned by whoever created it (one channel may
 		 * outlive one serving, and a Channel handed in by a consumer is not ours to tear down).
 		 * Close the channel yourself when you want the boundary gone.
+		 *
+		 * The receive closure is released too (mirrors `grow()`'s `close()`): it captures `api`,
+		 * `served`, and `excluded`, and the channel may well outlive this serving, so nothing should
+		 * hold those references once there is nothing left to answer.
 		 * @returns {void}
 		 */
 		close() {
 			closed = true;
+			try {
+				channel.onMessage(() => {});
+			} catch {
+				// A transport that refuses a re-registration after close keeps the old handler; harmless.
+			}
 		}
 	};
 }

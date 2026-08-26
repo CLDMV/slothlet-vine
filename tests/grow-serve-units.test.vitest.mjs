@@ -24,12 +24,15 @@ import { CODES } from "../src/lib/errors.mjs";
  * @param {string[]} [behaviour.leaves] - Leaves for the synchronous surface.
  * @param {boolean} [behaviour.noOnClose] - Omit `onClose` entirely.
  * @param {boolean} [behaviour.syncClose] - Fire the close handler synchronously during registration.
+ * @param {boolean} [behaviour.throwOnReRegister] - Throw on every `onMessage()` call after the first,
+ *   modeling a transport that refuses a handler re-registration once already registered.
  * @returns {object} The fake channel plus test controls.
  */
 function fakeChannel(behaviour = {}) {
 	const sent = [];
 	let handler = null;
 	let closeHandler = null;
+	let onMessageCalls = 0;
 	const channel = {
 		sent,
 		send(frame) {
@@ -37,6 +40,10 @@ function fakeChannel(behaviour = {}) {
 			behaviour.onSend?.(frame);
 		},
 		onMessage(fn) {
+			onMessageCalls++;
+			if (behaviour.throwOnReRegister && onMessageCalls > 1) {
+				throw new Error("this fake transport refuses a re-registration");
+			}
 			handler = fn;
 			if (behaviour.syncSurface) fn({ type: "surface", v: 1, leaves: behaviour.leaves ?? ["far.leaf"] });
 		},
@@ -269,6 +276,18 @@ describe("serve — answering edge cases", () => {
 	it("does not answer a call that lands after close()", async () => {
 		const { channel, serving: handle } = await serving();
 		handle.close();
+		const before = channel.sent.length;
+		channel.deliver({ type: "call", callId: "c1", path: "math.add", args: [1, 2] });
+		await tick();
+		expect(channel.sent.length).toBe(before);
+	});
+
+	it("still guards a call delivered after close() when the transport refuses the handler re-registration", async () => {
+		// close() releases the receive closure by re-registering a no-op via channel.onMessage(); if the
+		// transport refuses that call the ORIGINAL handler stays live, and its own internal `closed`
+		// check is what keeps it from answering. Cover that fallback path directly.
+		const { channel, serving: handle } = await serving({ throwOnReRegister: true });
+		expect(() => handle.close()).not.toThrow();
 		const before = channel.sent.length;
 		channel.deliver({ type: "call", callId: "c1", path: "math.add", args: [1, 2] });
 		await tick();
