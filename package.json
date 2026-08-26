@@ -86,7 +86,7 @@
 		"@cldmv/eslint-plugin-jsonv": "^1.0.3",
 		"@cldmv/jsonv": "^1.0.2",
 		"@cldmv/prettier-plugin-jsonv": "^1.0.1",
-		"@cldmv/slothlet": "^3.14.0",
+		"@cldmv/slothlet": "^3.15.0",
 		"@cldmv/vitest-runner": "^1.2.0",
 		"@eslint/css": "^1.4.0",
 		"@eslint/js": "^10.0.1",
