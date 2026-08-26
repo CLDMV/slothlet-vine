@@ -38,6 +38,7 @@ describe("websocket connect() and the optional 'ws' peer dependency", () => {
 	it("falls back to ws.default when the resolved module has no named WebSocket export", async () => {
 		vi.doMock("ws", () => {
 			class FakeWebSocket {
+				readyState = 0; // CONNECTING — matches a real client socket immediately after construction
 				send() {}
 				on() {}
 				close() {}

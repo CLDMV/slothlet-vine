@@ -191,6 +191,27 @@ describe("websocket specifics", () => {
 		expect(() => createChannel({ send() {} })).toThrow(TypeError);
 	});
 
+	it("rejects a socket missing a numeric readyState, rather than silently no-op'ing every send", () => {
+		// Without this check, send()/flushPending() read readyState as `undefined`, which never equals
+		// OPEN or CONNECTING — every send() becomes an invisible no-op with no error anywhere.
+		expect(() =>
+			createChannel({
+				send() {},
+				on() {},
+				close() {}
+				// no readyState
+			})
+		).toThrow(TypeError);
+		expect(() =>
+			createChannel({
+				send() {},
+				on() {},
+				close() {},
+				readyState: "open" // wrong type — not the numeric WHATWG enum
+			})
+		).toThrow(TypeError);
+	});
+
 	it("connect() builds a working client channel over a real server", async () => {
 		const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 		servers.add(wss);

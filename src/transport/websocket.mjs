@@ -91,7 +91,13 @@ const DECODER = new TextDecoder();
  */
 export function createChannel(socket, options) {
 	void options;
-	if (!socket || typeof socket.send !== "function" || typeof socket.on !== "function" || typeof socket.close !== "function") {
+	if (
+		!socket ||
+		typeof socket.send !== "function" ||
+		typeof socket.on !== "function" ||
+		typeof socket.close !== "function" ||
+		typeof socket.readyState !== "number"
+	) {
 		throw new TypeError(
 			"@cldmv/slothlet-vine: transport/websocket createChannel(socket) requires a `ws` WebSocket instance (send/on/close/readyState)."
 		);
