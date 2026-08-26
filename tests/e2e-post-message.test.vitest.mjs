@@ -385,6 +385,24 @@ describe("post-message transport specifics", () => {
 		expect(() => createChannel({ postMessage: 7 })).toThrow(TypeError);
 	});
 
+	it("rejects an EventEmitter-shaped port (postMessage + on, no addEventListener) — e.g. a node Worker handle", () => {
+		// No addEventListener AND a real .on() is exactly a node worker_threads Worker's shape: it
+		// would otherwise fall into the legacy onmessage= branch, which Node's Worker never reads —
+		// every inbound frame silently dropped forever with no error anywhere.
+		expect(() =>
+			createChannel({
+				postMessage() {},
+				on() {}
+			})
+		).toThrow(TypeError);
+		expect(() =>
+			createChannel({
+				postMessage() {},
+				on() {}
+			})
+		).toThrow(/worker_threads Worker handle/);
+	});
+
 	it("structured-clones the frame — the receiver gets a copy, not the same reference", async () => {
 		const { port1, port2 } = new MessageChannel();
 		const a = createChannel(port1);

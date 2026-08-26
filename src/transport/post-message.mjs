@@ -91,6 +91,17 @@ export function createChannel(port, options = {}) {
 
 	const deathEvents = mergeDeathEvents(options.deathEvents);
 	const useAddEventListener = typeof port.addEventListener === "function";
+	// An EventEmitter-shaped port with no addEventListener (a node worker_threads Worker handle
+	// being the case that actually bit this) would otherwise silently fall into the legacy
+	// onmessage= branch below — and Node's Worker never reads that property, so every inbound frame
+	// would be dropped forever with no error anywhere. A genuine legacy port (the fallback this
+	// branch exists for) is a plain object with a settable onmessage and no .on() at all; reject the
+	// EventEmitter shape loudly instead of accepting a configuration that can never actually work.
+	if (!useAddEventListener && typeof port.on === "function") {
+		throw new TypeError(
+			"@cldmv/slothlet-vine: transport/post-message needs a port with postMessage(frame) plus addEventListener('message', fn) (or a plain onmessage= setter) — an EventEmitter-style object with only .on() (e.g. a node worker_threads Worker handle) can never receive through this transport; use transport/worker-threads for that"
+		);
+	}
 
 	/** @type {boolean} Once true, every dispatcher is inert and `send` is a no-op. */
 	let closed = false;
