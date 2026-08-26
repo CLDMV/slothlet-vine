@@ -3,11 +3,20 @@
  *	@Filename: /src/transport/post-message.mjs
  *
  * The post-message transport: a Channel over the `postMessage` port surface shared by a browser
- * `Worker`, a browser `MessagePort`, and a node `worker_threads` `MessagePort` / `Worker`. Every one
- * of those exposes the same three things — `postMessage(frame)`, a `message` event
- * (`addEventListener('message', fn)` or the `onmessage=` setter), and (mostly) `close()` — so ONE
- * module serves them all. The medium structured-clones the frame, so frames cross as plain objects
- * with no codec of our own (`capabilities.structuredClone: true`, `codec: "none"`).
+ * `Worker`, a browser `MessagePort`, and a node `worker_threads` `MessagePort`. Every one of those
+ * exposes the same three things — `postMessage(frame)`, a `message` event
+ * (`addEventListener('message', fn)`, the only wiring this module actually uses to receive), and
+ * (mostly) `close()` — so ONE module serves them all. The medium structured-clones the frame, so
+ * frames cross as plain objects with no codec of our own (`capabilities.structuredClone: true`,
+ * `codec: "none"`).
+ *
+ * **Deliberately NOT supported here: a node `worker_threads` `Worker` handle** (the object
+ * `new Worker(...)` on the main thread returns). It exposes `postMessage()` but, unlike
+ * `MessagePort`, is a plain `EventEmitter` — no `addEventListener`, and no working `onmessage=`
+ * setter either (assigning one is silently inert; Node's `Worker` never reads it), so this module's
+ * receive path can never actually wire up and every inbound frame is dropped. Use
+ * `transport/worker-threads`'s `createChannel(worker)` for that object instead — it wraps the
+ * EventEmitter API correctly and adds real death detection on top.
  *
  * Two properties are deliberate and declared:
  *
@@ -29,10 +38,12 @@ const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
 /**
  * Wrap a `postMessage` port as a Channel.
  *
- * Works over any object exposing `postMessage(frame)` plus a `message` event — a browser `Worker`,
- * a browser `MessagePort`, or a node `worker_threads` `MessagePort` / `Worker`. The `message` event
- * is taken through `addEventListener('message', fn)` when the port has it (node MessagePort, browser
- * Worker/MessagePort all do) and otherwise through the `onmessage=` setter.
+ * Works over any object exposing `postMessage(frame)` plus an `addEventListener('message', fn)`-style
+ * `message` event — a browser `Worker`, a browser `MessagePort`, or a node `worker_threads`
+ * `MessagePort`. A port with no `addEventListener` at all falls back to the legacy `onmessage=`
+ * setter, for a minimal/legacy port that genuinely only supports that surface — but this does **not**
+ * make a node `worker_threads` `Worker` handle usable here; see the module header for why, and use
+ * `transport/worker-threads` for that object instead.
  *
  * ## Death detection is medium-specific — this is the honest matrix
  *
@@ -41,8 +52,6 @@ const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
  * - **node `worker_threads` `MessagePort`** — emits a real `'close'` event on the peer when the
  *   OTHER side closes (verified), plus `'messageerror'` on a failed deserialize. This is the case
  *   with genuine peer-death detection, and it is what this module's own e2e rides.
- * - **node `worker_threads` `Worker`** (the main-thread handle) — has no `'close'`; it emits
- *   `'exit'` when the worker stops. Pass `{ deathEvents: ["exit"] }` to observe it.
  * - **browser `Worker`** — has no `'close'` and no `'exit'`; only `'error'` (an uncaught error
  *   inside the worker) and `'messageerror'`. A `terminate()` from the main thread is a LOCAL action
  *   and fires no event, so main-thread-initiated death is not observable through the port. Pass
@@ -55,11 +64,11 @@ const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
  * The core never depends on `onClose` for correctness — a pending call also settles on its budget —
  * so a medium without death detection degrades to slower settling, never a hang.
  *
- * @param {object} port - Anything with `postMessage(frame)` and a `message` event.
+ * @param {object} port - Anything with `postMessage(frame)` and a `message` event (NOT a node
+ *   `worker_threads` `Worker` handle — see above).
  * @param {object} [options] - Transport options.
  * @param {string[]} [options.deathEvents] - Extra event names to treat as a close signal, UNIONed
- *   with the defaults (`"close"`, `"messageerror"`). Use `["exit"]` for a node worker handle,
- *   `["error"]` for a browser `Worker`.
+ *   with the defaults (`"close"`, `"messageerror"`). Use `["error"]` for a browser `Worker`.
  * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  *
  * @example
@@ -76,7 +85,7 @@ const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
 export function createChannel(port, options = {}) {
 	if (port === null || typeof port !== "object" || typeof port.postMessage !== "function") {
 		throw new TypeError(
-			"@cldmv/slothlet-vine: transport/post-message needs a port with postMessage(frame) (a Worker, MessagePort, or worker_threads port)"
+			"@cldmv/slothlet-vine: transport/post-message needs a port with postMessage(frame) (a browser Worker, a MessagePort, or a node worker_threads MessagePort — not a node worker_threads Worker handle; use transport/worker-threads for that)"
 		);
 	}
 

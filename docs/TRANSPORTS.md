@@ -41,7 +41,9 @@ Use it for: tests, simulating a vine before wiring a real boundary, or composing
 
 ## `transport/post-message`
 
-Wraps anything exposing `postMessage(frame)` plus a `message` event — a browser `Worker`, a browser `MessagePort`, or a node `worker_threads` `MessagePort`/`Worker`. One module serves all of them because they share that surface. See [BROWSER.md](BROWSER.md) for a full Web Worker walkthrough.
+Wraps anything exposing `postMessage(frame)` plus an `addEventListener('message', …)`-style `message` event — a browser `Worker`, a browser `MessagePort`, or a node `worker_threads` `MessagePort`. One module serves all of them because they share that surface. See [BROWSER.md](BROWSER.md) for a full Web Worker walkthrough.
+
+**Not this transport for a node `worker_threads` `Worker` handle** — the object `new Worker(...)` returns on the main thread. It has `postMessage()` but, unlike `MessagePort`, is a plain `EventEmitter` with no `addEventListener` and no working `onmessage=` setter, so this transport's receive path never wires up and every inbound frame is silently dropped. Use [`transport/worker-threads`](#transportworker-threads) for that object instead.
 
 ```javascript
 import { createChannel } from "@cldmv/slothlet-vine/transport/post-message";
@@ -56,7 +58,6 @@ const link = await grow(hostApi, createChannel(worker, { deathEvents: ["error"] 
 `onClose` fires only on a signal the port genuinely emits, and what that is varies:
 
 - **node `worker_threads` `MessagePort`** — a real `"close"` event on the peer when the other side closes, plus `"messageerror"` on a failed deserialize. This is the case with genuine peer-death detection.
-- **node `worker_threads` `Worker`** (the main-thread handle) — no `"close"`; it emits `"exit"` when the worker stops. Pass `{ deathEvents: ["exit"] }`.
 - **browser `Worker`** — no `"close"`, no `"exit"`; only `"error"` (an uncaught error inside the worker) and `"messageerror"`. A main-thread `terminate()` is a LOCAL action and fires no event — main-thread-initiated death is not observable through the port at all. Pass `{ deathEvents: ["error"] }` for the best-effort signal that exists.
 - **browser `MessagePort`** — `close()` is local-only per the HTML spec: closing one port does **not** notify the other. There is no peer-death detection here at all. `"messageerror"` still fires.
 
