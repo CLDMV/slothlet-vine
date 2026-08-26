@@ -344,6 +344,24 @@ describe("websocket transport specifics (fake socket)", () => {
 		expect(sent).toEqual([]);
 	});
 
+	it("does not throw for an un-encodable frame (BigInt) sent after a local close() — a close race, not a per-call refusal", () => {
+		// The close-race check must run BEFORE JSON.stringify, or a BigInt racing a close() would throw
+		// instead of silently no-op'ing, which every other transport's send() already gets right.
+		const socket = fakeSocket();
+		const channel = createChannel(socket);
+		channel.close();
+		expect(() => channel.send({ type: "call", callId: "big", path: "p", args: [1n] })).not.toThrow();
+	});
+
+	it("does not throw for an un-encodable frame (BigInt) when the socket is already CLOSING/CLOSED", () => {
+		// Distinct from the local-close case above: readyState can already be non-OPEN (e.g. a
+		// far-side-triggered close) even though THIS end never called close() itself.
+		const socket = fakeSocket();
+		socket.readyState = 2; // CLOSING
+		const channel = createChannel(socket);
+		expect(() => channel.send({ type: "call", callId: "big", path: "p", args: [1n] })).not.toThrow();
+	});
+
 	it("ignores a non-function onMessage/onClose registration", () => {
 		const socket = fakeSocket();
 		const channel = createChannel(socket);

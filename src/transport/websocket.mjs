@@ -201,24 +201,29 @@ export function createChannel(socket, options) {
 
 		/**
 		 * Encode one frame and deliver it. Buffered until `open` if the socket is still connecting; a
-		 * silent no-op on a closing/closed socket. A `JSON.stringify` throw is the JSON codec REFUSING
-		 * this frame (a `BigInt` in the graph) — a per-call fault, not a dead socket, so it is re-raised:
-		 * the core settles just that call `VINE_BAD_FRAME` and the socket stays alive. (Lossy-but-valid
-		 * degradation — `Date`→string, `Map`/`Set`→`{}` — is NOT a refusal and still crosses; see the
-		 * module header.)
+		 * silent no-op on a closing/closed socket or after a local `close()` — checked BEFORE encoding,
+		 * so a close race can never surface as a throw regardless of what the frame contains. Only once
+		 * the socket is confirmed CONNECTING/OPEN does a `JSON.stringify` throw mean the JSON codec
+		 * REFUSING this frame (a `BigInt` in the graph) — a per-call fault, not a dead socket, so it is
+		 * re-raised: the core settles just that call `VINE_BAD_FRAME` and the socket stays alive.
+		 * (Lossy-but-valid degradation — `Date`→string, `Map`/`Set`→`{}` — is NOT a refusal and still
+		 * crosses; see the module header.)
 		 * @param {object} frame - The plain frame object.
 		 * @returns {void}
 		 * @throws {TypeError} Re-raises a `JSON.stringify` failure (e.g. a `BigInt`) so the core settles
-		 *   that call `VINE_BAD_FRAME`.
+		 *   that call `VINE_BAD_FRAME` — but only when the socket is still CONNECTING/OPEN; a close race
+		 *   (local `close()`, or the socket already CLOSING/CLOSED) is a silent no-op instead, same as
+		 *   every other transport's send().
 		 */
 		send(frame) {
+			if (localClosing) return; // a local close() always wins — never even attempt to encode
+			if (socket.readyState !== CONNECTING && socket.readyState !== OPEN) return; // CLOSING/CLOSED — tolerate, no throw, no encode attempt
 			const text = JSON.stringify(frame); // a BigInt throws here — a per-call refusal, let it propagate.
 			if (text === undefined) return;
 			if (socket.readyState === CONNECTING) {
 				pendingSends.push(text);
 				return;
 			}
-			if (socket.readyState !== OPEN) return; // CLOSING/CLOSED — tolerate, no throw.
 			try {
 				socket.send(text);
 			} catch {
