@@ -2,6 +2,8 @@
 
 The implementation contract for `@cldmv/slothlet-vine`. Everything here is normative: the core, every built-in transport, and any consumer-written transport implement THIS. The mechanism is a browser-ready transposition of a production-proven node-side design (per-leaf forwarding stubs mounted at identical paths, permission-gated by slothlet itself, async correlation over an injected channel).
 
+Looking for a guide rather than the normative spec? See [CONFIGURATION.md](CONFIGURATION.md), [TRANSPORTS.md](TRANSPORTS.md), [CUSTOM-TRANSPORTS.md](CUSTOM-TRANSPORTS.md), [ERRORS.md](ERRORS.md), [PERMISSIONS.md](PERMISSIONS.md), and [BROWSER.md](BROWSER.md).
+
 ## Vocabulary
 
 - **vine** — the forwarding layer as a whole (`vine.grow` / `vine.serve`).
@@ -88,6 +90,8 @@ Error codes (all `VineError` subclasses carrying `.code`): `VINE_GONE`, `VINE_BU
 
 ## Built-in transports (each: one self-contained module + e2e test)
 
+See [TRANSPORTS.md](TRANSPORTS.md) for a usage guide, code examples, and the ownership/death-detection details that differ between the two-endpoint transports (`worker-threads`, `process`) — referenced from the conformance harness note below.
+
 | Subpath                    | Boundary                                                         | Notes                                                                                                                                                       |
 | -------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `transport/loopback`       | same process                                                     | `createPair()` → two linked Channels; `setImmediate`/`queueMicrotask` delivery (async like a real boundary). The reference implementation + test workhorse. |
@@ -98,7 +102,7 @@ Error codes (all `VineError` subclasses carrying `.code`): `VINE_GONE`, `VINE_BU
 
 ## Conformance harness (`@cldmv/slothlet-vine/testing`)
 
-`channelConformance(name, makePair, { test framework injection })` — a reusable suite ANY transport (built-in or consumer) runs against a factory producing a connected channel pair. Verifies: delivery, ordering, multi-frame bursts, large-ish payloads, `onMessage` registered-after-send behavior (frames sent before a handler is registered may be dropped OR buffered — the suite asserts the transport's declared behavior), `close()` idempotence, `onClose` firing on far-side close. Every built-in transport's test file runs this harness PLUS its e2e.
+`channelConformance(name, makePair, { test framework injection })` — a reusable suite ANY transport (built-in or consumer) runs against a factory producing a connected channel pair. Verifies: delivery, ordering, multi-frame bursts, large-ish payloads, `onMessage` registered-after-send behavior (frames sent before a handler is registered may be dropped OR buffered — the suite asserts the transport's declared behavior), `close()` idempotence, `onClose` firing on far-side close. Every built-in transport's test file runs this harness PLUS its e2e. See [CUSTOM-TRANSPORTS.md](CUSTOM-TRANSPORTS.md) for a walkthrough of writing a transport and running this suite against it.
 
 ## E2E test bar (every transport, no exceptions)
 

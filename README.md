@@ -50,6 +50,16 @@ Single-word leaves, context carried by the namespace — never `growVine()`-styl
 
 Companion package to `@cldmv/slothlet` (peer dependency); slothlet core stays a dependency-free in-process composition library — the vine is where transports live.
 
+## Documentation
+
+- **[Design & Protocol](docs/DESIGN.md)** — the normative Channel contract, frame schema, `grow`/`serve` semantics, and error taxonomy. If a guide below and this disagree, this wins.
+- **[Configuration Reference](docs/CONFIGURATION.md)** — every `grow()`/`serve()` option, with defaults, and what `link`/`serving` return.
+- **[Transports](docs/TRANSPORTS.md)** — the five built-in transports, when to reach for each, and the death-detection/ownership details that differ between them.
+- **[Writing a Custom Transport](docs/CUSTOM-TRANSPORTS.md)** — implementing the Channel contract, the uniform send-failure policy, and verifying it with the shared conformance harness.
+- **[Error Reference](docs/ERRORS.md)** — the `VINE_*` code list, `VineError`/`VineRemoteError`, and why a remote `VINE_*` code is never adopted as-is.
+- **[Permissions](docs/PERMISSIONS.md)** — how slothlet's own permission system gates a mounted stub exactly like a real leaf.
+- **[Using a Vine in the Browser](docs/BROWSER.md)** — a full Web Worker walkthrough with the `post-message` transport.
+
 ## License
 
 Apache-2.0 © CLDMV
