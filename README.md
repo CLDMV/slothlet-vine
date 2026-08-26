@@ -12,7 +12,7 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 > **Note on `process`:** the transport declares structured-clone fidelity, which requires the child to be forked with `{ serialization: "advanced" }`. Under Node's default `"json"` serialization, rich types (`Date`, `Map`, `Set`) degrade the same way the websocket JSON codec degrades them; the plain frame envelope works either way.
 
-The normative protocol lives in [`docs/DESIGN.md`](docs/DESIGN.md); the wire frames are in [`schemas/frame.schema.json`](schemas/frame.schema.json).
+The normative protocol lives in [`docs/DESIGN.md`](https://github.com/CLDMV/slothlet-vine/blob/master/docs/DESIGN.md); the wire frames are in [`schemas/frame.schema.json`](schemas/frame.schema.json) (shipped in the published package, so this one link stays relative).
 
 ## Usage shape (dot notation — the slothlet idiom)
 
@@ -52,13 +52,15 @@ Companion package to `@cldmv/slothlet` (peer dependency); slothlet core stays a 
 
 ## Documentation
 
-- **[Design & Protocol](docs/DESIGN.md)** — the normative Channel contract, frame schema, `grow`/`serve` semantics, and error taxonomy. If a guide below and this disagree, this wins.
-- **[Configuration Reference](docs/CONFIGURATION.md)** — every `grow()`/`serve()` option, with defaults, and what `link`/`serving` return.
-- **[Transports](docs/TRANSPORTS.md)** — the five built-in transports, when to reach for each, and the death-detection/ownership details that differ between them.
-- **[Writing a Custom Transport](docs/CUSTOM-TRANSPORTS.md)** — implementing the Channel contract, the uniform send-failure policy, and verifying it with the shared conformance harness.
-- **[Error Reference](docs/ERRORS.md)** — the `VINE_*` code list, `VineError`/`VineRemoteError`, and why a remote `VINE_*` code is never adopted as-is.
-- **[Permissions](docs/PERMISSIONS.md)** — how slothlet's own permission system gates a mounted stub exactly like a real leaf.
-- **[Using a Vine in the Browser](docs/BROWSER.md)** — a full Web Worker walkthrough with the `post-message` transport.
+`docs/` isn't included in the published npm package (see [Design](#design) below), so every link here is absolute — they work the same from npmjs.com, an editor previewing the installed package, or GitHub itself.
+
+- **[Design & Protocol](https://github.com/CLDMV/slothlet-vine/blob/master/docs/DESIGN.md)** — the normative Channel contract, frame schema, `grow`/`serve` semantics, and error taxonomy. If a guide below and this disagree, this wins.
+- **[Configuration Reference](https://github.com/CLDMV/slothlet-vine/blob/master/docs/CONFIGURATION.md)** — every `grow()`/`serve()` option, with defaults, and what `link`/`serving` return.
+- **[Transports](https://github.com/CLDMV/slothlet-vine/blob/master/docs/TRANSPORTS.md)** — the five built-in transports, when to reach for each, and the death-detection/ownership details that differ between them.
+- **[Writing a Custom Transport](https://github.com/CLDMV/slothlet-vine/blob/master/docs/CUSTOM-TRANSPORTS.md)** — implementing the Channel contract, the uniform send-failure policy, and verifying it with the shared conformance harness.
+- **[Error Reference](https://github.com/CLDMV/slothlet-vine/blob/master/docs/ERRORS.md)** — the `VINE_*` code list, `VineError`/`VineRemoteError`, and why a remote `VINE_*` code is never adopted as-is.
+- **[Permissions](https://github.com/CLDMV/slothlet-vine/blob/master/docs/PERMISSIONS.md)** — how slothlet's own permission system gates a mounted stub exactly like a real leaf.
+- **[Using a Vine in the Browser](https://github.com/CLDMV/slothlet-vine/blob/master/docs/BROWSER.md)** — a full Web Worker walkthrough with the `post-message` transport.
 
 ## License
 
