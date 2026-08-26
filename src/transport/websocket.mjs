@@ -284,6 +284,9 @@ export function createChannel(socket, options) {
  * @param {object} [options] - Options forwarded to the `ws` WebSocket constructor.
  * @returns {Promise<object>} A Channel over the freshly-created client socket.
  * @throws {Error} When the optional peer dependency `ws` is not installed.
+ * @throws {Error} When the resolved `ws` module exposes neither a `WebSocket` nor a `default` export
+ *   that is a constructor — an unexpected module shape, rather than a confusing native
+ *   `TypeError: WebSocket is not a constructor` at the `new` site.
  *
  * @example
  * import { connect } from "@cldmv/slothlet-vine/transport/websocket";
@@ -303,6 +306,11 @@ export async function connect(url, options) {
 		);
 	}
 	const WebSocket = ws.WebSocket ?? ws.default;
+	if (typeof WebSocket !== "function") {
+		throw new Error(
+			"@cldmv/slothlet-vine: transport/websocket could not find a WebSocket constructor on the resolved 'ws' module (checked ws.WebSocket and ws.default) — this may indicate an incompatible 'ws' version or a broken install."
+		);
+	}
 	return createChannel(new WebSocket(url, options));
 }
 

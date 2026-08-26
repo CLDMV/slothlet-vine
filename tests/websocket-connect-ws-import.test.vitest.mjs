@@ -55,4 +55,19 @@ describe("websocket connect() and the optional 'ws' peer dependency", () => {
 		expect(typeof channel.send).toBe("function");
 		expect(typeof channel.onMessage).toBe("function");
 	});
+
+	it("throws a clear error when the resolved module has neither a WebSocket nor a usable default export", async () => {
+		vi.doMock("ws", () => ({ WebSocket: undefined, default: undefined })); // both explicit own keys — see the note above
+		vi.resetModules();
+		const { connect } = await import("../src/transport/websocket.mjs");
+
+		let caught;
+		try {
+			await connect("ws://127.0.0.1:1");
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(Error);
+		expect(caught.message).toMatch(/could not find a WebSocket constructor/);
+	});
 });
