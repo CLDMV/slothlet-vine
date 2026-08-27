@@ -265,8 +265,9 @@ function makeEndpoint(target, side) {
 		},
 
 		/**
-		 * Tear this end down: detach the listeners so no further frame or death event dispatches. On the
-		 * PARENT, additionally `child.disconnect()` a still-connected child to close the IPC channel —
+		 * Tear this end down: detach the listeners and release the handler closures, so no further frame
+		 * or death event dispatches and nothing consumer-registered stays reachable through this channel.
+		 * On the PARENT, additionally `child.disconnect()` a still-connected child to close the IPC channel —
 		 * but never `child.kill()`, because whoever forked the child owns its lifecycle. On the CHILD,
 		 * leave the channel to the parent (the parent already learns of the child's exit on its own
 		 * side). Idempotent.
@@ -275,6 +276,8 @@ function makeEndpoint(target, side) {
 		close() {
 			if (closed) return;
 			closed = true;
+			handler = null;
+			onCloseHandler = null;
 			detach();
 			if (isParent) {
 				try {

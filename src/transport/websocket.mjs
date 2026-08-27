@@ -261,6 +261,7 @@ export function createChannel(socket, options) {
 			if (localClosing) return;
 			localClosing = true;
 			messageHandler = null;
+			closeHandler = null;
 			pendingSends.length = 0;
 			try {
 				socket.removeListener("open", flushPending);

@@ -220,15 +220,17 @@ export function createChannel(port, options = {}) {
 		},
 
 		/**
-		 * Tear this end down: detach every listener, then close the port. Idempotent. Listeners are
-		 * detached BEFORE `port.close()` so a medium that reports the local close (a node MessagePort
-		 * fires its own `'close'`) cannot re-enter our death path on the way out.
+		 * Tear this end down: detach every listener and release both handler closures, then close the
+		 * port. Idempotent. Listeners are detached BEFORE `port.close()` so a medium that reports the
+		 * local close (a node MessagePort fires its own `'close'`) cannot re-enter our death path on the
+		 * way out.
 		 * @returns {void}
 		 */
 		close() {
 			if (closed) return;
 			closed = true;
 			messageHandler = null;
+			closeHandler = null;
 			if (useAddEventListener) {
 				for (const [event, listener] of attached) {
 					try {
