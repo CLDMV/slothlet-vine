@@ -120,8 +120,10 @@ export function createChannel(socket, options) {
 	 */
 	function flushPending() {
 		if (socket.readyState !== OPEN) return;
-		while (pendingSends.length > 0) {
-			const text = pendingSends.shift();
+		// splice(0, length) drains the queue in one O(n) shot; shift()-in-a-loop is O(n²) on a large
+		// pre-open backlog, since every shift re-indexes the remaining elements.
+		const queued = pendingSends.splice(0, pendingSends.length);
+		for (const text of queued) {
 			try {
 				socket.send(text);
 			} catch {
