@@ -18,7 +18,7 @@
 			"required": ["type", "callId", "path", "args"],
 			"properties": {
 				"type": { "const": "call" },
-				"callId": { "type": "string" },
+				"callId": { "type": "string", "minLength": 1 },
 				"path": { "type": "string", "description": "dotted leaf path exactly as served, e.g. exts.pdfViewer.open" },
 				"args": { "type": "array" }
 			}
@@ -28,7 +28,7 @@
 			"required": ["type", "callId"],
 			"properties": {
 				"type": { "const": "result" },
-				"callId": { "type": "string" },
+				"callId": { "type": "string", "minLength": 1 },
 				"value": {}
 			}
 		},
@@ -37,7 +37,7 @@
 			"required": ["type", "callId", "error"],
 			"properties": {
 				"type": { "const": "error" },
-				"callId": { "type": "string" },
+				"callId": { "type": "string", "minLength": 1 },
 				"error": {
 					"type": "object",
 					"required": ["name", "message"],

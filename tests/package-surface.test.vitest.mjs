@@ -133,4 +133,11 @@ describe("frame schema", () => {
 		expect(Object.keys(errorFrame("n#1", new Error("x")))).toEqual(expect.arrayContaining(error.required));
 		expect(Object.keys(errorFrame("n#1", new Error("x")).error)).toEqual(expect.arrayContaining(error.properties.error.required));
 	});
+
+	it("requires a non-empty callId, matching parseFrame's own rejection", () => {
+		const [, call, result, error] = schema.oneOf;
+		expect(call.properties.callId.minLength).toBe(1);
+		expect(result.properties.callId.minLength).toBe(1);
+		expect(error.properties.callId.minLength).toBe(1);
+	});
 });
