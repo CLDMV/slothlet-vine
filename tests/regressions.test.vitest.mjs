@@ -24,6 +24,13 @@
  *  8. The minors: mounting stops when the far side dies mid-mount; `handshakeMs` has explicit
  *     semantics for nonsense values; a hostile error object settles the call it belongs to; and
  *     `close()` releases the receive closure.
+ *  9. `serve()` enforces data-only on ARGUMENTS received off the wire too, not only return values —
+ *     a frame built directly against a by-reference channel (bypassing `vineStub`) could otherwise
+ *     hand a live function to the local leaf.
+ *  10. `grow()`'s own channel registrations — `onMessage`, and `onClose` when the transport offers
+ *      one — are released on every exit, not only a successful `close()`: a handshake that fails
+ *      (budget expiry, or the far side gone before the surface arrives) never returns a `link` a
+ *      caller could close, so the failure path has to be the release.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
@@ -522,5 +529,106 @@ describe("finding 9 — data-only is enforced on ARGUMENTS serve-side too, not o
 
 		expect(reply.type).toBe("result");
 		expect(reply.value).toEqual({ ran: true, value: { nested: [1, 2, 3] } });
+	});
+});
+
+/**
+ * A slothlet stand-in with nothing mounted — enough surface for grow() to mount and unmount against.
+ * @returns {object} The fake api.
+ */
+function bareGrowApi() {
+	return {
+		slothlet: {
+			api: {
+				async add() {},
+				async remove() {},
+				async leaves() {
+					return [];
+				}
+			}
+		}
+	};
+}
+
+describe("finding 10a — close() also releases the onClose registration, not only onMessage", () => {
+	it("re-registers a channel.onClose handler that is no longer the link's", async () => {
+		/** @type {Function[]} */
+		const messageHandlers = [];
+		/** @type {Function[]} */
+		const closeHandlers = [];
+		const channel = {
+			send() {},
+			onMessage(handler) {
+				messageHandlers.push(handler);
+				if (messageHandlers.length === 1) handler({ type: "surface", v: 1, leaves: [] });
+			},
+			onClose(handler) {
+				closeHandlers.push(handler);
+			}
+		};
+
+		const link = await grow(bareGrowApi(), channel, { handshakeMs: 1000, budgetMs: 1000 });
+		expect(closeHandlers).toHaveLength(1);
+
+		await link.close();
+		expect(closeHandlers).toHaveLength(2);
+		expect(closeHandlers[1]).not.toBe(closeHandlers[0]);
+		// The replacement is inert: a late far-side-death notification is neither acted on nor thrown.
+		expect(() => closeHandlers[1]({ reason: "peer-closed" })).not.toThrow();
+	});
+});
+
+describe("finding 10b — a failed handshake releases the channel registrations too, since no link is ever returned to close", () => {
+	it("re-registers inert onMessage/onClose handlers when the handshake budget expires", async () => {
+		/** @type {Function[]} */
+		const messageHandlers = [];
+		/** @type {Function[]} */
+		const closeHandlers = [];
+		const channel = {
+			send() {},
+			onMessage(handler) {
+				messageHandlers.push(handler);
+			},
+			onClose(handler) {
+				closeHandlers.push(handler);
+			}
+		};
+
+		await expect(grow(bareGrowApi(), channel, { budgetMs: 30, handshakeMs: 30 })).rejects.toMatchObject({ code: CODES.BUDGET });
+
+		expect(messageHandlers).toHaveLength(2);
+		expect(messageHandlers[1]).not.toBe(messageHandlers[0]);
+		expect(() => messageHandlers[1]({ type: "result", callId: "x", value: 1 })).not.toThrow();
+
+		expect(closeHandlers).toHaveLength(2);
+		expect(closeHandlers[1]).not.toBe(closeHandlers[0]);
+		expect(() => closeHandlers[1]({ reason: "peer-closed" })).not.toThrow();
+	});
+
+	it("releases the registrations when the far side is gone before the surface arrives too", async () => {
+		/** @type {Function[]} */
+		const messageHandlers = [];
+		/** @type {Function[]} */
+		const closeHandlers = [];
+		const channel = {
+			send() {},
+			onMessage(handler) {
+				messageHandlers.push(handler);
+			},
+			onClose(handler) {
+				closeHandlers.push(handler);
+			}
+		};
+
+		const growing = grow(bareGrowApi(), channel, { handshakeMs: 1000, budgetMs: 1000 });
+		growing.catch(() => {}); // observed below via .rejects — suppress the default unhandled-rejection warning
+		expect(closeHandlers).toHaveLength(1);
+		closeHandlers[0]({ reason: "peer-closed" }); // the far side dies before publishing its surface
+
+		await expect(growing).rejects.toMatchObject({ code: CODES.GONE });
+		expect(messageHandlers).toHaveLength(2);
+		expect(messageHandlers[1]).not.toBe(messageHandlers[0]);
+		expect(closeHandlers).toHaveLength(2);
+		expect(closeHandlers[1]).not.toBe(closeHandlers[0]);
 	});
 });

@@ -167,24 +167,54 @@ export async function grow(api, channel, options = {}) {
 		finish({ reason: "gone", info });
 	});
 
-	const surface = await new Promise((resolve, reject) => {
-		onSurface = resolve;
-		onSurfaceFailed = reject;
-		if (captured.error) return reject(captured.error);
-		if (captured.surface) return resolve(captured.surface);
-		if (Number.isFinite(handshakeMs) && handshakeMs > 0) {
-			const timer = setTimeout(() => {
-				if (surfaceSettled) return;
-				surfaceSettled = true;
-				reject(
-					new VineError(CODES.BUDGET, `slothlet-vine: no surface frame within the ${handshakeMs}ms handshake budget`, {
-						budgetMs: handshakeMs
-					})
-				);
-			}, handshakeMs);
-			if (timer && typeof timer.unref === "function") timer.unref();
+	/**
+	 * Detach this link's own registrations from the channel: the receive handler and, when the
+	 * transport offers one, the close-notification handler. Both closures capture `api`, `pending`,
+	 * and `state`, and the channel may outlive this call (it is not ours to tear down) — so nothing
+	 * consumer-registered should stay reachable through it once nothing is expected on the link any
+	 * more. Best effort: a transport that refuses a re-registration keeps its old handler, which is
+	 * harmless once there is nothing left to answer.
+	 * @returns {void}
+	 */
+	function releaseChannelHandlers() {
+		try {
+			channel.onMessage(() => {});
+		} catch {
+			// See above: harmless when the transport refuses the re-registration.
 		}
-	});
+		try {
+			if (typeof channel.onClose === "function") channel.onClose(() => {});
+		} catch {
+			// Same tolerance.
+		}
+	}
+
+	let surface;
+	try {
+		surface = await new Promise((resolve, reject) => {
+			onSurface = resolve;
+			onSurfaceFailed = reject;
+			if (captured.error) return reject(captured.error);
+			if (captured.surface) return resolve(captured.surface);
+			if (Number.isFinite(handshakeMs) && handshakeMs > 0) {
+				const timer = setTimeout(() => {
+					if (surfaceSettled) return;
+					surfaceSettled = true;
+					reject(
+						new VineError(CODES.BUDGET, `slothlet-vine: no surface frame within the ${handshakeMs}ms handshake budget`, {
+							budgetMs: handshakeMs
+						})
+					);
+				}, handshakeMs);
+				if (timer && typeof timer.unref === "function") timer.unref();
+			}
+		});
+	} catch (err) {
+		// The handshake failed before a link was ever returned, so there is no `link.close()` a caller
+		// could reach to release these registrations — this call IS that release.
+		releaseChannelHandlers();
+		throw err;
+	}
 
 	/** @type {string[]} */
 	const mounted = [];
@@ -311,14 +341,9 @@ export async function grow(api, channel, options = {}) {
 					}
 				}
 			} finally {
-				// Release the receive closure: it captures `api` and the pending table, and the channel may
-				// well outlive the link (the transport belongs to whoever created it). Nothing is expected
-				// on it any more — every pending call is settled on the next line.
-				try {
-					channel.onMessage(() => {});
-				} catch {
-					// A transport that refuses a re-registration after close keeps the old handler; harmless.
-				}
+				// Release both channel registrations (see releaseChannelHandlers) — nothing is expected on
+				// either any more; every pending call is settled on the next line.
+				releaseChannelHandlers();
 				pending.settleAll(CODES.CLOSED, "slothlet-vine: the link was closed");
 				finish({ reason: "closed" });
 			}
