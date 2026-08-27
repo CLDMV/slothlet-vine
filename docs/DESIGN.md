@@ -158,7 +158,9 @@ The `process` transport declares `capabilities.structuredClone: true`, but the t
 
 ### Data-only, both directions
 
-The sketch states the rule for arguments. It applies to **return values** too, and that half can only be enforced serve-side: a leaf whose return value contains a function anywhere is answered with an `error` frame carrying `VINE_DATA_ONLY` instead of a `result`. Left unchecked, the same call has two different meanings depending on the transport — over a cloning boundary it fails as an opaque `DataCloneError`, while over a by-reference one (loopback, same realm) the function crosses intact and hands the caller a live closure over the other side's scope, which is a hole in the isolation the vine exists to provide.
+The sketch states the rule for arguments, enforced grow-side before a stub ever sends a frame. It applies to **return values** too, and that half can only be enforced serve-side: a leaf whose return value contains a function anywhere is answered with an `error` frame carrying `VINE_DATA_ONLY` instead of a `result`. Left unchecked, the same call has two different meanings depending on the transport — over a cloning boundary it fails as an opaque `DataCloneError`, while over a by-reference one (loopback, same realm) the function crosses intact and hands the caller a live closure over the other side's scope, which is a hole in the isolation the vine exists to provide.
+
+Serve also re-checks **arguments**, as a backstop, for the identical reason: the grow-side stub's own pre-send check only covers frames a legitimate `vineStub` call actually built. Nothing stops a frame constructed directly against the channel — possible only over a by-reference transport like loopback, where no serialization step would otherwise refuse a live function reference — from reaching `serve()` with a function hiding in `args`. `serve()` therefore runs the same `findFunctionArg` check on `args` before invoking the leaf, answering `VINE_DATA_ONLY` rather than ever calling the leaf with a live function reference.
 
 ### Paths
 

@@ -107,6 +107,24 @@ export async function serve(api, channel, options = {}) {
 			if (!served.has(path)) {
 				throw new VineError(CODES.NO_LEAF, `slothlet-vine: '${path}' is not in the served surface`, { path });
 			}
+			// The grow-side stub already refuses a function-bearing argument before it ever sends a
+			// frame (see grow.mjs), but that enforcement only covers frames built by a legitimate
+			// vineStub call. Nothing stops a frame constructed directly against the channel — possible
+			// only over a by-reference transport like loopback, where no serialization step would
+			// otherwise refuse a live function reference — from reaching here with a function hiding in
+			// `args`. Re-check before invoking, the same defense-in-depth reasoning as the return-value
+			// check below.
+			const argFunctionAt = findFunctionArg(args);
+			if (argFunctionAt !== null) {
+				throw new VineError(
+					CODES.DATA_ONLY,
+					`slothlet-vine: '${path}' was called with a function at ${argFunctionAt} — the vine is data-only`,
+					{
+						path,
+						location: argFunctionAt
+					}
+				);
+			}
 			const value = await invoke(api, path, args);
 			// Data-only cuts BOTH ways, and this is the half a grow side cannot enforce. Over a cloning
 			// transport a returned function fails as an opaque DataCloneError; over a by-reference one

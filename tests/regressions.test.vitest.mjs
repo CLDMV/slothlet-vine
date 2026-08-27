@@ -226,7 +226,7 @@ describe("finding 4 — a unicode-named leaf crosses the vine, and declined leav
 		const serving = await serve(serveApi, far, { paths: ["intl"] });
 		teardown.push(async () => serving.close());
 
-		expect(serving.excluded).toEqual(["factory.make", "factory.nested", "factory.plain"]);
+		expect(serving.excluded).toEqual(["factory.make", "factory.nested", "factory.plain", "factory.receive"]);
 		expect(serving.excluded.some((leaf) => serving.leaves.includes(leaf))).toBe(false);
 	});
 
@@ -478,5 +478,49 @@ describe("finding 8d — close() releases the receive closure", () => {
 		expect(handlers[1]).not.toBe(handlers[0]);
 		// The replacement is inert: a late frame is neither answered nor thrown into the transport.
 		expect(() => handlers[1]({ type: "result", callId: "whatever", value: 1 })).not.toThrow();
+	});
+});
+
+describe("finding 9 — data-only is enforced on ARGUMENTS serve-side too, not only grow-side", () => {
+	it("refuses a call frame built directly against the channel, before the leaf ever runs", async () => {
+		// vineStub already refuses a function-bearing argument before it ever sends a frame (grow.mjs),
+		// but that only covers frames a legitimate vineStub call built. Nothing stops a frame
+		// constructed directly against the channel — possible only over a by-reference transport like
+		// loopback, where no serialization step would otherwise refuse a live function reference — from
+		// reaching serve() with a function hiding in `args`. This bypasses vineStub entirely to prove
+		// serve() itself is the backstop.
+		const serveApi = await instance(REGRESSION_DIR);
+		const [near, far] = createPair();
+		const serving = await serve(serveApi, far);
+		teardown.push(() => serving.close());
+
+		const reply = await new Promise((resolve) => {
+			near.onMessage((frame) => {
+				if (frame.type !== "surface") resolve(frame);
+			});
+			near.send({ type: "call", callId: "hostile", path: "factory.receive", args: [1, () => "should never run"] });
+		});
+
+		expect(reply.type).toBe("error");
+		expect(reply.error.code).toBe(CODES.DATA_ONLY);
+		expect(reply.error.message).toContain("data-only");
+		expect(reply.error.message).toContain("arg[1]");
+	});
+
+	it("still answers a call whose arguments are ordinary data", async () => {
+		const serveApi = await instance(REGRESSION_DIR);
+		const [near, far] = createPair();
+		const serving = await serve(serveApi, far);
+		teardown.push(() => serving.close());
+
+		const reply = await new Promise((resolve) => {
+			near.onMessage((frame) => {
+				if (frame.type !== "surface") resolve(frame);
+			});
+			near.send({ type: "call", callId: "clean", path: "factory.receive", args: [{ nested: [1, 2, 3] }] });
+		});
+
+		expect(reply.type).toBe("result");
+		expect(reply.value).toEqual({ ran: true, value: { nested: [1, 2, 3] } });
 	});
 });
