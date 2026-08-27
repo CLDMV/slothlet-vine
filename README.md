@@ -2,9 +2,9 @@
 
 Vines between slothlet api trees.
 
-[![npm version]][npm_version_url] [![npm downloads]][npm_downloads_url] [![GitHub downloads]][github_downloads_url] [![Last commit]][last_commit_url] [![npm last update]][npm_last_update_url]
+[![npm version]][npm_version_url] [![npm downloads]][npm_downloads_url] [![GitHub downloads]][github_downloads_url] [![Last commit]][last_commit_url] [![npm last update]][npm_last_update_url] [![coverage]][coverage_url]
 
-[![npm unpacked size]][npm_size_url] [![Repo size]][repo_size_url] [![Contributors]][contributors_url] [![Sponsor shinrai]][sponsor_url]
+[![Contributors]][contributors_url] [![Sponsor shinrai]][sponsor_url]
 
 ---
 
@@ -131,6 +131,8 @@ Swap `transport/loopback` for any of the other four built-in transports, or your
 - **[Permissions](https://github.com/CLDMV/slothlet-vine/blob/master/docs/PERMISSIONS.md)** — how slothlet's own permission system gates a mounted stub exactly like a real leaf.
 - **[Using a Vine in the Browser](https://github.com/CLDMV/slothlet-vine/blob/master/docs/BROWSER.md)** — a full Web Worker walkthrough with the `post-message` transport.
 
+[![CodeFactor]][codefactor_url] [![npms.io score]][npms_url] [![npm unpacked size]][npm_size_url] [![Repo size]][repo_size_url]
+
 ---
 
 ## 🔗 Links
@@ -158,6 +160,10 @@ Apache-2.0 © Shinrai / CLDMV
 [last_commit_url]: https://github.com/CLDMV/slothlet-vine/commits
 [npm last update]: https://img.shields.io/npm/last-update/%40cldmv%2Fslothlet-vine?style=for-the-badge&logo=npm&logoColor=white&labelColor=CB3837
 [npm_last_update_url]: https://www.npmjs.com/package/@cldmv/slothlet-vine
+[codefactor]: https://img.shields.io/codefactor/grade/github/CLDMV/slothlet-vine?style=for-the-badge&logo=codefactor&logoColor=white&labelColor=F44A6A
+[codefactor_url]: https://www.codefactor.io/repository/github/cldmv/slothlet-vine
+[npms.io score]: https://img.shields.io/npms-io/final-score/%40cldmv%2Fslothlet-vine?style=for-the-badge&logo=npms&logoColor=white&labelColor=0B5D57
+[npms_url]: https://npms.io/search?q=%40cldmv%2Fslothlet-vine
 [npm unpacked size]: https://img.shields.io/npm/unpacked-size/%40cldmv%2Fslothlet-vine.svg?style=for-the-badge&logo=npm&logoColor=white&labelColor=CB3837
 [npm_size_url]: https://www.npmjs.com/package/@cldmv/slothlet-vine
 [repo size]: https://img.shields.io/github/repo-size/CLDMV/slothlet-vine?style=for-the-badge&logo=github&logoColor=white&labelColor=181717
@@ -166,6 +172,8 @@ Apache-2.0 © Shinrai / CLDMV
 [github_license_url]: https://github.com/CLDMV/slothlet-vine/blob/HEAD/LICENSE
 [npm license]: https://img.shields.io/npm/l/%40cldmv%2Fslothlet-vine.svg?style=for-the-badge&logo=npm&logoColor=white&labelColor=CB3837
 [npm_license_url]: https://www.npmjs.com/package/@cldmv/slothlet-vine
+[coverage]: https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FCLDMV%2Fslothlet-vine%2Fbadges%2Fcoverage.json&style=for-the-badge&logo=vitest&logoColor=white
+[coverage_url]: https://github.com/CLDMV/slothlet-vine/blob/badges/coverage.json
 [contributors]: https://img.shields.io/github/contributors/CLDMV/slothlet-vine.svg?style=for-the-badge&logo=github&logoColor=white&labelColor=181717
 [contributors_url]: https://github.com/CLDMV/slothlet-vine/graphs/contributors
 [sponsor shinrai]: https://img.shields.io/github/sponsors/shinrai?style=for-the-badge&logo=githubsponsors&logoColor=white&labelColor=EA4AAA&label=Sponsor
