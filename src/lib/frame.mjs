@@ -80,6 +80,23 @@ export function isSafePath(path) {
 }
 
 /**
+ * A location-string label for a Map key that never risks invoking user code. Unlike a property key
+ * from `Reflect.ownKeys` (always a string or symbol, always safe to stringify), a Map key can be ANY
+ * value — including a live object whose `toString`/`Symbol.toPrimitive` is user-defined and could
+ * throw or run arbitrary code on every walk, not just ones that turn out to hide a function.
+ * Primitives stringify normally (no user hook exists to intercept that); anything else gets a
+ * generic, content-free placeholder instead of being read at all — same "skip rather than read"
+ * reasoning as the accessor-property guard below.
+ * @param {unknown} key - The Map key.
+ * @returns {string} A safe label.
+ */
+function safeKeyLabel(key) {
+	if (key === null) return "null";
+	const type = typeof key;
+	return type === "object" || type === "function" ? `<${type}>` : String(key);
+}
+
+/**
  * Locate the first function anywhere in an argument graph. The vine is data-only in v1, so a
  * function argument is refused AT THE EDGE with a named error rather than allowed to reach the
  * transport codec, where it would surface as an unattributed clone crash.
@@ -114,7 +131,7 @@ export function findFunctionArg(args) {
 		// Map/Set carry their payload in iteration order, not as own properties.
 		if (value instanceof Map) {
 			for (const [key, item] of value) {
-				const hit = walk(item, `${where}.get(${String(key)})`) || walk(key, `${where}.key`);
+				const hit = walk(item, `${where}.get(${safeKeyLabel(key)})`) || walk(key, `${where}.key`);
 				if (hit) return hit;
 			}
 			return null;

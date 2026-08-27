@@ -111,6 +111,32 @@ describe("findFunctionArg", () => {
 		expect(findFunctionArg([new Map([[() => {}, 1]])])).toBe("arg[0].key");
 	});
 
+	it("labels an object Map key generically rather than stringifying it", () => {
+		expect(findFunctionArg([new Map([[{}, () => {}]])])).toBe("arg[0].get(<object>)");
+	});
+
+	it("labels a null Map key as the literal 'null', not the generic object placeholder", () => {
+		// typeof null === "object", but null has no methods to guard against — spell it out plainly.
+		expect(findFunctionArg([new Map([[null, () => {}]])])).toBe("arg[0].get(null)");
+	});
+
+	it("never runs a Map key's toString — not even a hostile one, not even when the value is ordinary data", () => {
+		let called = false;
+		// toString lives on the PROTOTYPE, not as an own property, so this exercises only the label
+		// construction — Reflect.ownKeys(hostileKey) finds nothing, so the walk of the key itself
+		// (which legitimately inspects a key's own function-valued properties) is not what's on trial.
+		class HostileKey {
+			toString() {
+				called = true;
+				return "should never run";
+			}
+		}
+		const hostileKey = new HostileKey();
+		expect(() => findFunctionArg([new Map([[hostileKey, "just data"]])])).not.toThrow();
+		expect(findFunctionArg([new Map([[hostileKey, "just data"]])])).toBeNull();
+		expect(called).toBe(false);
+	});
+
 	it("finds a symbol-keyed function", () => {
 		const key = Symbol("cb");
 		expect(findFunctionArg([{ [key]: () => {} }])).toContain("Symbol(cb)");
