@@ -141,6 +141,9 @@ export function createChannel(socket, options) {
 	function notifyClose(info) {
 		if (closeNotified || localClosing) return;
 		closeNotified = true;
+		// Same cleanup as close(): a pre-open backlog that never got to flush serves no purpose once
+		// the socket itself has reported it's gone.
+		pendingSends.length = 0;
 		if (typeof closeHandler === "function") {
 			try {
 				closeHandler(info);

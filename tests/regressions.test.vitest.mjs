@@ -35,16 +35,24 @@
  *      `removeListener`/`off` — `createParentChannel`'s `proc` param is documented as
  *      test-double-friendly and is only validated for `send`/`on`, so a minimal fake must not crash
  *      `close()`.
+ *  12. Two more retention gaps in the same family as 10: (a) `grow()` only released its channel
+ *      registrations from `close()` and a failed handshake — not when the far side goes gone AFTER
+ *      the link is already established, which never calls `close()` on its own; (b)
+ *      `transport/websocket`'s pre-open send backlog was cleared only by a local `close()`, not when
+ *      the socket itself reports death (`notifyClose`), so a queue that never got to flush stayed
+ *      retained indefinitely on a channel already known to be gone.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { EventEmitter } from "node:events";
 import slothlet from "@cldmv/slothlet";
 
 import { grow, serve } from "../src/index.mjs";
 import { CODES, VineError, VineRemoteError, fromWire } from "../src/lib/errors.mjs";
 import { createPair } from "../src/transport/loopback.mjs";
 import { createParentChannel } from "../src/transport/process.mjs";
+import { createChannel as createWebSocketChannel } from "../src/transport/websocket.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const GROW_DIR = path.join(here, "fixtures", "grow-api");
@@ -696,5 +704,67 @@ describe("finding 11 — transport/process's close() tolerates a target without 
 		child.close();
 		expect(viaOff.length).toBeGreaterThan(0);
 		expect(viaRemoveListener).toEqual([]);
+	});
+});
+
+describe("finding 12a — the far side going gone AFTER the link is established also releases the channel registrations", () => {
+	it("releases onMessage/onClose as soon as the far side is gone, without waiting for link.close()", async () => {
+		/** @type {Function[]} */
+		const messageHandlers = [];
+		/** @type {Function[]} */
+		const closeHandlers = [];
+		const channel = {
+			send() {},
+			onMessage(handler) {
+				messageHandlers.push(handler);
+				if (messageHandlers.length === 1) handler({ type: "surface", v: 1, leaves: [] });
+			},
+			onClose(handler) {
+				closeHandlers.push(handler);
+			}
+		};
+
+		const link = await grow(bareGrowApi(), channel, { handshakeMs: 1000, budgetMs: 1000 });
+		expect(messageHandlers).toHaveLength(1);
+		expect(closeHandlers).toHaveLength(1);
+
+		// The far side dies well after the handshake settled. link.close() is never called.
+		closeHandlers[0]({ reason: "peer-closed" });
+		await link.closed;
+
+		expect(messageHandlers).toHaveLength(2);
+		expect(messageHandlers[1]).not.toBe(messageHandlers[0]);
+		expect(closeHandlers).toHaveLength(2);
+		expect(closeHandlers[1]).not.toBe(closeHandlers[0]);
+		// The replacement is inert.
+		expect(() => closeHandlers[1]({ reason: "peer-closed" })).not.toThrow();
+	});
+});
+
+describe("finding 12b — websocket's notifyClose() also clears the pre-open send backlog", () => {
+	it("drops a queued frame once the socket reports it's gone, instead of retaining it forever", () => {
+		const socket = new EventEmitter();
+		socket.readyState = 0; // CONNECTING — 'open' never fires
+		socket.send = () => {};
+		socket.close = () => {};
+
+		const channel = createWebSocketChannel(socket);
+		channel.send({ type: "call", callId: "1", path: "p", args: [] }); // queued while CONNECTING
+
+		let info;
+		channel.onClose((closeInfo) => {
+			info = closeInfo;
+		});
+		socket.emit("error", new Error("connection refused"));
+		expect(info.reason).toBe("error");
+
+		// The backlog must be gone even though close() was never called. Proven the same way the
+		// existing "stray open" specifics test does: flip to OPEN and fire a stray 'open' — if the
+		// queue still held the frame, flushPending would send it.
+		socket.readyState = 1; // OPEN
+		const sent = [];
+		socket.send = (text) => sent.push(text);
+		socket.emit("open");
+		expect(sent).toEqual([]);
 	});
 });

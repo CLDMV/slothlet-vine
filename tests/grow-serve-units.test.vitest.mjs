@@ -535,6 +535,18 @@ describe("grow — stub dispatch edge cases", () => {
 		await expect(other.link.closed).resolves.toMatchObject({ reason: "closed" });
 	});
 
+	it("still resolves closed, not gone, when a gone notification races close() while it's still tearing down", async () => {
+		const { channel, link } = await grown();
+		// close() flips state.closed synchronously and then awaits the (async) unmount — the channel
+		// registrations aren't released until its finally block, so the far side reporting gone WHILE
+		// that unmount is still in flight reaches the original handler, not a replacement no-op. This
+		// is the one case the internal `state.closed` guard exists for.
+		const closing = link.close();
+		channel.fireClose({ reason: "raced" });
+		await closing;
+		await expect(link.closed).resolves.toMatchObject({ reason: "closed" });
+	});
+
 	it("falls back to the default budget for a nonsense budgetMs", async () => {
 		const api = fakeApi();
 		const channel = fakeChannel({ syncSurface: true });

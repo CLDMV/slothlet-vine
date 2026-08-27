@@ -160,10 +160,21 @@ export async function grow(api, channel, options = {}) {
 		if (state.gone || state.closed) return;
 		state.gone = true;
 		pending.settleAll(CODES.GONE, "slothlet-vine: the far side of the link is gone");
+		// Captured BEFORE the block below can flip it: true only when the handshake had already
+		// settled — i.e. a live, already-returned link just went gone. When it's still false, the
+		// rejection below routes through grow()'s own try/catch around the handshake await, which
+		// releases the registrations before rethrowing — releasing here too would be redundant (and,
+		// since a link that never got returned has nothing else to release them, harmlessly so, but
+		// there's no reason to double up).
+		const linkWasLive = surfaceSettled;
 		if (!surfaceSettled) {
 			surfaceSettled = true;
 			onSurfaceFailed(new VineError(CODES.GONE, "slothlet-vine: the channel closed before the far side published its surface"));
 		}
+		// A live link is over the moment the far side is gone, whether or not the caller ever calls
+		// close() — and the channel is explicitly allowed to outlive the link. Release both
+		// registrations now rather than waiting on a close() that may never come.
+		if (linkWasLive) releaseChannelHandlers();
 		finish({ reason: "gone", info });
 	});
 
