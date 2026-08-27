@@ -3,41 +3,45 @@
  *	@Filename: /src/index.mjs
  *
  * Vines between slothlet api trees — location-transparent forwarding leaves over an injected
- * Channel. PRE-IMPLEMENTATION SCAFFOLD: the API surface below is the design contract; bodies land
- * with the browser spike. See README.md.
+ * Channel. One end {@link serve}s its callable leaves; the other {@link grow}s a forwarding stub per
+ * leaf at the identical dotted path, so a caller cannot tell which side of the boundary the
+ * implementation lives on, and slothlet's own permission system gates the stub exactly as it gates
+ * a real leaf.
+ *
+ * The core NEVER imports a transport: it consumes only the {@link Channel} interface below.
+ * Built-in transports live under `@cldmv/slothlet-vine/transport/*`; a consumer may pass any object
+ * satisfying the contract. See `docs/DESIGN.md` for the normative protocol and
+ * `schemas/frame.schema.json` for the wire frames.
+ *
+ * @example
+ * import { grow, serve } from "@cldmv/slothlet-vine";
+ * import { createPair } from "@cldmv/slothlet-vine/transport/loopback";
+ *
+ * const [near, far] = createPair();
+ * await serve(workerApi, far, { paths: ["exts"] });
+ * const link = await grow(hostApi, near, { budgetMs: 5000 });
+ * await hostApi.exts.pdfViewer.open("a.pdf"); // executes on the serving instance
+ * await link.close();
  */
 
 /**
  * The transport seam every vine rides on. Implement this (plus a capability declaration) to plug in
- * a custom transport; the bridge consumes ONLY this interface.
+ * a custom transport; the core consumes ONLY this interface.
+ *
+ * `onMessage` and `onClose` are single-handler registrations — last write wins. Handlers must never
+ * throw into the transport (the core wraps its own), and frames may arrive after `close()` was
+ * called locally; the core tolerates and ignores them.
+ *
  * @typedef {object} Channel
- * @property {(message: unknown) => void} send
- * @property {(handler: (message: unknown) => void) => void} onMessage
- * @property {() => void} [close]
+ * @property {(message: object) => void} send - Deliver one frame to the far side.
+ * @property {(handler: (message: object) => void) => void} onMessage - Register the (single) receive handler.
+ * @property {() => void} [close] - Tear the transport down.
+ * @property {(handler: (info?: object) => void) => void} [onClose] - Register a (single) far-side-death/closure handler.
+ * @property {{ structuredClone?: boolean, codec?: "none"|"json", buffersUntilHandler?: boolean }} [capabilities]
+ *   What the medium preserves, how it encodes, and whether frames sent before a handler is
+ *   registered are buffered (true) or may be dropped (absent/false).
  */
 
-const NOT_IMPLEMENTED = (name) => {
-	throw new Error(`@cldmv/slothlet-vine: ${name} is not implemented yet (pre-release scaffold — see the repo README)`);
-};
-
-/**
- * Grow a vine FROM this instance TO a far tree: mount forwarding-stub leaves (from the far side's
- * leaf manifest) into `api` over `channel`, permission-gated by slothlet itself.
- * @param {object} api — the local slothlet instance
- * @param {Channel} channel
- * @param {object} [options]
- */
-export function growVine(api, channel, options) {
-	NOT_IMPLEMENTED("growVine");
-}
-
-/**
- * Serve this instance's leaves TO a far tree: answer call frames arriving on `channel` by invoking
- * the real leaves (re-checking permissions on this side), and publish the leaf manifest.
- * @param {object} api — the local slothlet instance
- * @param {Channel} channel
- * @param {object} [options]
- */
-export function serveVine(api, channel, options) {
-	NOT_IMPLEMENTED("serveVine");
-}
+export { grow, DEFAULT_BUDGET_MS } from "./grow.mjs";
+export { serve } from "./serve.mjs";
+export { CODES, VineError, VineRemoteError, fromWire, toWire } from "./lib/errors.mjs";
