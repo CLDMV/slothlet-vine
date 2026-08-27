@@ -31,6 +31,10 @@
  *      one — are released on every exit, not only a successful `close()`: a handshake that fails
  *      (budget expiry, or the far side gone before the surface arrives) never returns a `link` a
  *      caller could close, so the failure path has to be the release.
+ *  11. `transport/process`'s `close()` tolerates a wrapped object that doesn't implement
+ *      `removeListener`/`off` — `createParentChannel`'s `proc` param is documented as
+ *      test-double-friendly and is only validated for `send`/`on`, so a minimal fake must not crash
+ *      `close()`.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
@@ -40,6 +44,7 @@ import slothlet from "@cldmv/slothlet";
 import { grow, serve } from "../src/index.mjs";
 import { CODES, VineError, VineRemoteError, fromWire } from "../src/lib/errors.mjs";
 import { createPair } from "../src/transport/loopback.mjs";
+import { createParentChannel } from "../src/transport/process.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const GROW_DIR = path.join(here, "fixtures", "grow-api");
@@ -630,5 +635,66 @@ describe("finding 10b — a failed handshake releases the channel registrations 
 		expect(messageHandlers[1]).not.toBe(messageHandlers[0]);
 		expect(closeHandlers).toHaveLength(2);
 		expect(closeHandlers[1]).not.toBe(closeHandlers[0]);
+	});
+});
+
+describe("finding 11 — transport/process's close() tolerates a target without removeListener/off", () => {
+	it("does not throw when the wrapped object lacks removeListener entirely", () => {
+		const proc = {
+			connected: true,
+			send(message, cb) {
+				if (typeof cb === "function") cb(null);
+				return true;
+			},
+			on() {}
+			// No removeListener, no off. createParentChannel's contract (see its own JSDoc) is
+			// documented as send()+on() only, and `proc` is explicitly test-double-friendly.
+		};
+
+		const child = createParentChannel(proc);
+		expect(() => child.close()).not.toThrow();
+	});
+
+	it("tolerates a removeListener that throws, and still detaches the rest", () => {
+		const attempted = [];
+		const proc = {
+			connected: true,
+			send() {
+				return true;
+			},
+			on() {},
+			removeListener(event) {
+				attempted.push(event);
+				throw new Error("hostile removeListener");
+			}
+		};
+
+		const child = createParentChannel(proc);
+		expect(() => child.close()).not.toThrow();
+		// Both removals were attempted despite each one throwing — one bad removal must not skip the rest.
+		expect(attempted).toEqual(expect.arrayContaining(["message", "disconnect"]));
+	});
+
+	it("prefers off over removeListener when both exist", () => {
+		const viaOff = [];
+		const viaRemoveListener = [];
+		const proc = {
+			connected: true,
+			send() {
+				return true;
+			},
+			on() {},
+			off(event) {
+				viaOff.push(event);
+			},
+			removeListener(event) {
+				viaRemoveListener.push(event);
+			}
+		};
+
+		const child = createParentChannel(proc);
+		child.close();
+		expect(viaOff.length).toBeGreaterThan(0);
+		expect(viaRemoveListener).toEqual([]);
 	});
 });

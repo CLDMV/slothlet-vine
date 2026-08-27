@@ -184,16 +184,36 @@ function makeEndpoint(target, side) {
 	}
 
 	/**
-	 * Detach every listener this endpoint attached. Idempotent in practice (removeListener of an absent
+	 * Remove one listener from `target`, tolerating a target that doesn't implement `off`/
+	 * `removeListener` at all, or whose removal throws. `target` is validated only for `send`/`on`
+	 * (see {@link createChannel}/{@link createParentChannel} — `proc` is explicitly documented as
+	 * test-double-friendly), so a minimal fake lacking either must not crash `close()`, and one bad
+	 * removal must not skip the rest.
+	 * @param {string} event - The event name.
+	 * @param {Function} listener - The listener to remove.
+	 * @returns {void}
+	 */
+	function off(event, listener) {
+		try {
+			const remove =
+				typeof target.off === "function" ? target.off : typeof target.removeListener === "function" ? target.removeListener : null;
+			if (remove) remove.call(target, event, listener);
+		} catch {
+			// Best effort: close() must never throw because the far side's object is uncooperative.
+		}
+	}
+
+	/**
+	 * Detach every listener this endpoint attached. Idempotent in practice (removing an absent
 	 * listener is a no-op).
 	 * @returns {void}
 	 */
 	function detach() {
-		target.removeListener("message", onMessageListener);
-		target.removeListener("disconnect", onDisconnect);
+		off("message", onMessageListener);
+		off("disconnect", onDisconnect);
 		if (isParent) {
-			target.removeListener("exit", onExit);
-			target.removeListener("error", onError);
+			off("exit", onExit);
+			off("error", onError);
 		}
 	}
 
