@@ -1,6 +1,6 @@
 {
 	"name": "@cldmv/slothlet-vine",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Vines between slothlet api trees — location-transparent forwarding leaves over pluggable transports (Web Worker postMessage, worker_threads, process IPC, WebSocket), permission-gated by slothlet itself.",
 	"type": "module",
 	"license": "Apache-2.0",
