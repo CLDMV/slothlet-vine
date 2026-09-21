@@ -38,6 +38,7 @@
  */
 import { CODES, VineError, fromWire } from "./lib/errors.mjs";
 import { callFrame, findFunctionArg, isSafePath, parseFrame } from "./lib/frame.mjs";
+import { createEventForwarder } from "./lib/events.mjs";
 import { PendingTable, assertApi, assertChannel, makeNonce, onCloseSafe } from "./lib/link.mjs";
 
 /** Default per-call settle budget, in ms. @type {number} */
@@ -101,6 +102,17 @@ export async function grow(api, channel, options = {}) {
 	/** @type {{ closed: boolean, gone: boolean }} The link's terminal state; both are one-way. */
 	const state = { closed: false, gone: false };
 
+	// Bidirectional event forwarding (see lib/events.mjs). This end holds BOTH halves: it can subscribe
+	// to the far instance's events (through the returned `event` surface) AND serve the far instance's
+	// subscriptions to THIS instance's events. Its subId space is separate from `pending`'s callId space
+	// (each draws from its own nonce), so a sub-ack and a call result can never be confused.
+	const events = createEventForwarder({
+		api,
+		channel,
+		budgetMs,
+		ended: () => (state.gone ? "gone" : state.closed ? "closed" : null)
+	});
+
 	// The receive handler has to be registered BEFORE the handshake promise exists, because a
 	// synchronous transport can deliver the surface frame during `onMessage()` itself. So the two
 	// handshake outcomes are CAPTURED first and replayed into the promise when it is created —
@@ -151,8 +163,12 @@ export async function grow(api, channel, options = {}) {
 			// budget expiry). PendingTable drops both — settle-once is enforced there, not here.
 			if (frame.type === "result") pending.resolve(frame.callId, frame.value);
 			else if (frame.type === "error") pending.reject(frame.callId, fromWire(frame.error));
+			// Event-forwarding frames, BOTH halves: `sub-ack`/`event` settle/deliver OUR subscriptions to
+			// far events; `sub`/`unsub` serve the far side's subscriptions to THIS instance's events.
+			else if (frame.type === "sub" || frame.type === "unsub" || frame.type === "sub-ack" || frame.type === "event")
+				events.handleFrame(frame);
 		} catch {
-			// Defensive: parseFrame is total and the settle path cannot throw.
+			// Defensive: parseFrame is total and the settle/deliver path cannot throw.
 		}
 	});
 
@@ -160,6 +176,9 @@ export async function grow(api, channel, options = {}) {
 		if (state.gone || state.closed) return;
 		state.gone = true;
 		pending.settleAll(CODES.GONE, "slothlet-vine: the far side of the link is gone");
+		// The far side is gone: drop every forwarded subscription (both halves) and reject in-flight
+		// subscribe handshakes — no `unsub`, there is nothing left to tell.
+		events.teardown({ sendUnsubs: false });
 		// Captured BEFORE the block below can flip it: true only when the handshake had already
 		// settled — i.e. a live, already-returned link just went gone. When it's still false, the
 		// rejection below routes through grow()'s own try/catch around the handshake await, which
@@ -309,6 +328,16 @@ export async function grow(api, channel, options = {}) {
 
 	return {
 		id: moduleID,
+		/**
+		 * Event-forwarding surface, mirroring slothlet's own `event.on` / `event.once` shape — async
+		 * here because the granted level is resolved across the boundary. `on(event, listener, { once })`
+		 * / `once(event, listener)` return `Promise<{ level, off }>`. See {@link import("./lib/events.mjs")}.
+		 * @type {{ on: Function, once: Function }}
+		 */
+		event: {
+			on: (eventName, listener, options = {}) => events.subscribe(eventName, listener, options?.once === true),
+			once: (eventName, listener) => events.subscribe(eventName, listener, true)
+		},
 		leaves: mounted,
 		skipped,
 		collisions,
@@ -352,6 +381,9 @@ export async function grow(api, channel, options = {}) {
 					}
 				}
 			} finally {
+				// Drop every forwarded subscription (both halves) and tell the far side to release ours
+				// (best effort — it also drops them when its own serving closes).
+				events.teardown({ sendUnsubs: true });
 				// Release both channel registrations (see releaseChannelHandlers) — nothing is expected on
 				// either any more; every pending call is settled on the next line.
 				releaseChannelHandlers();

@@ -201,6 +201,60 @@ export function errorFrame(callId, err) {
 	return { type: "error", callId, error: toWire(err) };
 }
 
+/** The delivery levels a subscription can be granted, carried on a `sub-ack`. @type {Set<string>} */
+export const SUB_LEVELS = new Set(["deny", "notify", "allow"]);
+
+/**
+ * Build a `sub` frame — a grow-side request to subscribe to a far event, carrying the subscriber's
+ * own identity so the TRUSTED (serving) side can resolve its delivery level and never has to trust a
+ * value the grow side merely asserted for someone else.
+ * @param {string} subId - Correlation id, unique per grow-side link.
+ * @param {string} event - The event name to subscribe to.
+ * @param {string|null} subscriberPath - The subscriber's grow-side api identity (from
+ *   `api.slothlet.caller()`), or `null` for a host subscription.
+ * @returns {{ type: "sub", subId: string, event: string, subscriberPath: string|null }} The frame.
+ */
+export function subFrame(subId, event, subscriberPath) {
+	return { type: "sub", subId, event, subscriberPath: subscriberPath ?? null };
+}
+
+/**
+ * Build a `sub-ack` frame — the serving side's resolved delivery level for a subscription, so a
+ * downgrade or denial is a distinct, catchable result on the grow side rather than a silent absence
+ * of payloads.
+ * @param {string} subId - Correlation id being answered.
+ * @param {"deny"|"notify"|"allow"} level - The level the trusted side resolved for the subscriber.
+ * @returns {{ type: "sub-ack", subId: string, level: string }} The frame.
+ */
+export function subAckFrame(subId, level) {
+	return { type: "sub-ack", subId, level };
+}
+
+/**
+ * Build an `event` frame — one forwarded delivery for a subscription. `payload` is present ONLY when
+ * `withPayload` is true (an `allow` delivery); at `notify` it is omitted entirely, so a notify
+ * subscriber's domain payload never crosses the boundary.
+ * @param {string} subId - The subscription being delivered to.
+ * @param {{ event: string, at: number, instanceID: string }} meta - The trigger envelope.
+ * @param {boolean} withPayload - Whether to carry the domain payload.
+ * @param {unknown} payload - The domain payload (included only when `withPayload`).
+ * @returns {object} The frame.
+ */
+export function eventFrame(subId, meta, withPayload, payload) {
+	const frame = { type: "event", subId, event: meta.event, at: meta.at, instanceID: meta.instanceID };
+	if (withPayload) frame.payload = payload;
+	return frame;
+}
+
+/**
+ * Build an `unsub` frame — a grow-side request to tear down a subscription on the serving side.
+ * @param {string} subId - The subscription to remove.
+ * @returns {{ type: "unsub", subId: string }} The frame.
+ */
+export function unsubFrame(subId) {
+	return { type: "unsub", subId };
+}
+
 /**
  * TOTAL, tolerant frame validator. Returns a normalized frame or `null`; it NEVER throws, and an
  * unknown `type` is `null` rather than an error — forward compatibility is a receiver obligation
@@ -234,6 +288,44 @@ export function parseFrame(message) {
 				else unsafe.push(typeof leaf === "string" ? leaf : String(leaf));
 			}
 			return { type: "surface", v: FRAME_VERSION, leaves, unsafe };
+		}
+
+		// Event-forwarding frames key on `subId`, not `callId`. `subscriberPath` is UNTRUSTED here, but
+		// it is only ever glob-matched against event rules (never a mount/property key), so an arbitrary
+		// string cannot pollute a prototype the way an unguarded `call` path could — a type check suffices.
+		if (type === "sub") {
+			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
+			if (typeof message.event !== "string" || message.event.length === 0) return null;
+			const subscriberPath = message.subscriberPath;
+			if (subscriberPath !== null && typeof subscriberPath !== "string") return null;
+			return { type: "sub", subId: message.subId, event: message.event, subscriberPath };
+		}
+		if (type === "sub-ack") {
+			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
+			if (!SUB_LEVELS.has(message.level)) return null;
+			return { type: "sub-ack", subId: message.subId, level: message.level };
+		}
+		if (type === "event") {
+			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
+			if (typeof message.event !== "string") return null;
+			// Whether the domain payload crossed is carried by the PRESENCE of the `payload` key, not its
+			// value: an `allow` delivery of an explicit `undefined` still arrives as a delivered payload,
+			// while a `notify` delivery has no key at all. `hasPayload` preserves that distinction.
+			const hasPayload = Object.prototype.hasOwnProperty.call(message, "payload");
+			const frame = {
+				type: "event",
+				subId: message.subId,
+				event: message.event,
+				at: message.at,
+				instanceID: message.instanceID,
+				hasPayload
+			};
+			if (hasPayload) frame.payload = message.payload;
+			return frame;
+		}
+		if (type === "unsub") {
+			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
+			return { type: "unsub", subId: message.subId };
 		}
 
 		const callId = message.callId;
