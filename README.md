@@ -16,11 +16,16 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ## ✨ What's New
 
-### Latest: v1.0.0 (August 2026)
+### Latest: v1.1.0 (September 2026)
 
-- **First real release (#2)** — the pre-implementation scaffold published as `0.1.0` is superseded entirely. `grow()`/`serve()`, the frame protocol, the error taxonomy, and a reusable Channel conformance harness are all in place, and **all five built-in transports are implemented and tested end-to-end over their real boundaries** — `loopback`, `post-message`, `worker-threads`, `process`, and `websocket`.
-- **Data-only enforcement, both directions** — a function anywhere in a call's arguments or return value is refused at the edge (`VINE_DATA_ONLY`), checked grow-side before a frame is ever sent and independently re-checked serve-side, so a frame built directly against a by-reference channel can't slip a live closure across the boundary either.
-- [View full v1.0.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.0.md)
+- **Cross-vine event forwarding, both directions (#20)** — slothlet's instance-wide events now travel across a vine: an event emitted in either linked instance reaches subscribers in the other, gated by that emitter's own permissions. Each subscriber is resolved on the **emitting** side to one of three levels (`deny` / `notify` / `allow`) and receives only what its level allows — a `notify` subscriber's payload never crosses. `link.event.on` and the serve handle's `event.on` mirror slothlet's own `event.on` shape. Requires `@cldmv/slothlet` ≥ 3.18.1 for a same-process transport (see the changelog).
+- [View full v1.1.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.0.md)
+
+### Recent Releases
+
+- **v1.0.2** (September 2026) — dev-only: `@cldmv/slothlet` dev pin `3.15.0` → `3.15.1` (peer floor unchanged) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.2.md))
+- **v1.0.1** (August 2026) — dev-only: `eslint` `10.9.0` → `10.9.1` ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.1.md))
+- **v1.0.0** (August 2026) — first real release: `grow()`/`serve()`, the frame protocol and error taxonomy, a reusable Channel conformance harness, and all five built-in transports tested end-to-end over their real boundaries ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.0.md))
 
 📚 **For complete version history and detailed release notes, see the [docs/changelog/](https://github.com/CLDMV/slothlet-vine/tree/master/docs/changelog/) folder.**
 
