@@ -37,7 +37,8 @@
  * See the note on `close()`.
  */
 import { CODES, VineError, fromWire } from "./lib/errors.mjs";
-import { callFrame, findFunctionArg, isSafePath, parseFrame, subFrame, unsubFrame } from "./lib/frame.mjs";
+import { callFrame, findFunctionArg, isSafePath, parseFrame } from "./lib/frame.mjs";
+import { createEventForwarder } from "./lib/events.mjs";
 import { PendingTable, assertApi, assertChannel, makeNonce, onCloseSafe } from "./lib/link.mjs";
 
 /** Default per-call settle budget, in ms. @type {number} */
@@ -98,16 +99,19 @@ export async function grow(api, channel, options = {}) {
 	const moduleID = `vine-${nonce}`;
 	const pending = new PendingTable(nonce);
 
-	// Event forwarding uses its OWN correlation space so a sub-ack and a call result can never be
-	// confused: a distinct nonce means subIds (`<subNonce>#n`) never collide with callIds (`<nonce>#n`).
-	// `subAcks` settles the subscribe handshake exactly once (resolving with the granted level); `subs`
-	// holds the live subscriptions a delivered `event` frame fans out to.
-	const subAcks = new PendingTable(makeNonce());
-	/** @type {Map<string, { listener: Function, event: string, level: string, once: boolean }>} */
-	const subs = new Map();
-
 	/** @type {{ closed: boolean, gone: boolean }} The link's terminal state; both are one-way. */
 	const state = { closed: false, gone: false };
+
+	// Bidirectional event forwarding (see lib/events.mjs). This end holds BOTH halves: it can subscribe
+	// to the far instance's events (through the returned `event` surface) AND serve the far instance's
+	// subscriptions to THIS instance's events. Its subId space is separate from `pending`'s callId space
+	// (each draws from its own nonce), so a sub-ack and a call result can never be confused.
+	const events = createEventForwarder({
+		api,
+		channel,
+		budgetMs,
+		ended: () => (state.gone ? "gone" : state.closed ? "closed" : null)
+	});
 
 	// The receive handler has to be registered BEFORE the handshake promise exists, because a
 	// synchronous transport can deliver the surface frame during `onMessage()` itself. So the two
@@ -159,53 +163,22 @@ export async function grow(api, channel, options = {}) {
 			// budget expiry). PendingTable drops both — settle-once is enforced there, not here.
 			if (frame.type === "result") pending.resolve(frame.callId, frame.value);
 			else if (frame.type === "error") pending.reject(frame.callId, fromWire(frame.error));
-			// `sub-ack` settles the subscribe handshake with the granted level; a late one for an
-			// already-settled sub is dropped by PendingTable. `event` fans out to the live subscription.
-			else if (frame.type === "sub-ack") subAcks.resolve(frame.subId, frame.level);
-			else if (frame.type === "event") deliverEvent(frame);
+			// Event-forwarding frames, BOTH halves: `sub-ack`/`event` settle/deliver OUR subscriptions to
+			// far events; `sub`/`unsub` serve the far side's subscriptions to THIS instance's events.
+			else if (frame.type === "sub" || frame.type === "unsub" || frame.type === "sub-ack" || frame.type === "event")
+				events.handleFrame(frame);
 		} catch {
 			// Defensive: parseFrame is total and the settle/deliver path cannot throw.
 		}
 	});
 
-	/**
-	 * Deliver one forwarded `event` frame to its subscription's listener. `hasPayload` — the presence
-	 * of the `payload` key on the wire — is what tells an `allow` delivery (payload, possibly
-	 * `undefined`) from a `notify` one (no payload at all); the listener is called `(payload, meta)`
-	 * exactly as slothlet's own event listener is. A `once` subscription is torn down before delivery.
-	 * @param {{ subId: string, event: string, at: number, instanceID: string, hasPayload: boolean, payload?: unknown }} frame - The parsed event.
-	 * @returns {void}
-	 */
-	function deliverEvent(frame) {
-		const sub = subs.get(frame.subId);
-		if (!sub) return; // unknown, or already unsubscribed locally
-		const meta = { event: frame.event, at: frame.at, instanceID: frame.instanceID };
-		const payload = frame.hasPayload ? frame.payload : undefined;
-		if (sub.once) {
-			subs.delete(frame.subId);
-			try {
-				channel.send(unsubFrame(frame.subId));
-			} catch {
-				// The far side tears the once-subscription down on its side regardless; a failed unsub
-				// here just means it lingers until the link ends. Not worth surfacing.
-			}
-		}
-		try {
-			sub.listener(payload, meta);
-		} catch {
-			// A subscriber's listener error must never break the link or the transport — the same
-			// per-listener isolation slothlet's own event system provides locally.
-		}
-	}
-
 	onCloseSafe(channel, (info) => {
 		if (state.gone || state.closed) return;
 		state.gone = true;
 		pending.settleAll(CODES.GONE, "slothlet-vine: the far side of the link is gone");
-		// The far side is gone: reject any in-flight subscribe handshakes and drop live subscriptions
-		// (no `unsub` — there is nothing left to tell).
-		subAcks.settleAll(CODES.GONE, "slothlet-vine: the far side of the link is gone");
-		subs.clear();
+		// The far side is gone: drop every forwarded subscription (both halves) and reject in-flight
+		// subscribe handshakes — no `unsub`, there is nothing left to tell.
+		events.teardown({ sendUnsubs: false });
 		// Captured BEFORE the block below can flip it: true only when the handshake had already
 		// settled — i.e. a live, already-returned link just went gone. When it's still false, the
 		// rejection below routes through grow()'s own try/catch around the handshake await, which
@@ -353,87 +326,17 @@ export async function grow(api, channel, options = {}) {
 		};
 	}
 
-	/**
-	 * Subscribe a local listener to a FAR event over this link. The subscriber's own identity is
-	 * captured here (via `api.slothlet.caller()`) and sent to the trusted (serving) side, which
-	 * resolves its delivery level and strips the payload before it crosses — so this side never trusts
-	 * a level it computed locally, and never receives a payload the far side chose to withhold.
-	 *
-	 * Settles with `{ level, off }`: the GRANTED level (`deny` / `notify` / `allow`), so a downgrade or
-	 * denial is a distinct, catchable result rather than a silent absence of deliveries, plus an
-	 * unsubscribe. At `deny` the listener is never registered and `off` is a no-op.
-	 * @param {string} eventName - The far event to subscribe to.
-	 * @param {Function} listener - Called `(payload, meta)` per delivery; `payload` is `undefined` at
-	 *   `notify`, `meta` is `{ event, at, instanceID }`.
-	 * @param {boolean} once - Remove the subscription after its first delivery.
-	 * @returns {Promise<{ level: "deny"|"notify"|"allow", off: () => void }>} Granted level + unsubscribe.
-	 * @throws {TypeError} For a bad event name / listener, or when the local slothlet predates the
-	 *   `api.slothlet.caller()` identity accessor (slothlet ≥ 3.18.0 is required for event forwarding).
-	 * @throws {VineError} `VINE_GONE` / `VINE_CLOSED` when the link has already ended.
-	 */
-	async function subscribeEvent(eventName, listener, once) {
-		if (typeof eventName !== "string" || eventName.length === 0) {
-			throw new TypeError("@cldmv/slothlet-vine: link.event.on() needs a non-empty event name");
-		}
-		if (typeof listener !== "function") {
-			throw new TypeError("@cldmv/slothlet-vine: link.event.on() needs a listener function");
-		}
-		if (typeof api.slothlet?.caller !== "function") {
-			throw new TypeError(
-				"@cldmv/slothlet-vine: event forwarding needs api.slothlet.caller() — slothlet ≥ 3.18.0 is required on the grow side"
-			);
-		}
-		if (state.gone) throw new VineError(CODES.GONE, "slothlet-vine: cannot subscribe — the far side of the link is gone");
-		if (state.closed) throw new VineError(CODES.CLOSED, "slothlet-vine: cannot subscribe — the link is closed");
-
-		// Capture the subscriber's real identity NOW, synchronously, while its extent is still the active
-		// caller — before the first await, after which the ambient context is no longer guaranteed.
-		const subscriberPath = api.slothlet.caller();
-		const subId = subAcks.nextCallId();
-		const acked = subAcks.open(subId, { path: eventName, budgetMs });
-		try {
-			channel.send(subFrame(subId, eventName, subscriberPath));
-		} catch (err) {
-			subAcks.reject(
-				subId,
-				new VineError(CODES.BAD_FRAME, `slothlet-vine: subscribe to '${eventName}' could not be sent: ${err?.message ?? String(err)}`, {
-					event: eventName
-				})
-			);
-		}
-		// Settles with the granted level, or rejects VINE_GONE / VINE_CLOSED / VINE_BUDGET / VINE_BAD_FRAME.
-		const level = await acked;
-		if (level === "deny") return { level, off: () => {} };
-
-		/**
-		 * Unsubscribe: stop local delivery and tell the far side to drop its host-level listener.
-		 * @returns {void}
-		 */
-		const off = () => {
-			if (!subs.has(subId)) return;
-			subs.delete(subId);
-			try {
-				channel.send(unsubFrame(subId));
-			} catch {
-				// The far side also drops the subscription on link teardown; a failed unsub only means it
-				// lingers on that side until then.
-			}
-		};
-		subs.set(subId, { listener, event: eventName, level, once });
-		return { level, off };
-	}
-
 	return {
 		id: moduleID,
 		/**
 		 * Event-forwarding surface, mirroring slothlet's own `event.on` / `event.once` shape — async
 		 * here because the granted level is resolved across the boundary. `on(event, listener, { once })`
-		 * / `once(event, listener)` return `Promise<{ level, off }>`.
+		 * / `once(event, listener)` return `Promise<{ level, off }>`. See {@link import("./lib/events.mjs")}.
 		 * @type {{ on: Function, once: Function }}
 		 */
 		event: {
-			on: (eventName, listener, options = {}) => subscribeEvent(eventName, listener, options?.once === true),
-			once: (eventName, listener) => subscribeEvent(eventName, listener, true)
+			on: (eventName, listener, options = {}) => events.subscribe(eventName, listener, options?.once === true),
+			once: (eventName, listener) => events.subscribe(eventName, listener, true)
 		},
 		leaves: mounted,
 		skipped,
@@ -478,17 +381,9 @@ export async function grow(api, channel, options = {}) {
 					}
 				}
 			} finally {
-				// Tell the far side to drop each forwarded subscription (best effort — it also drops them
-				// when its own serving closes), then reject any in-flight subscribe handshakes.
-				for (const subId of subs.keys()) {
-					try {
-						channel.send(unsubFrame(subId));
-					} catch {
-						// Best effort.
-					}
-				}
-				subs.clear();
-				subAcks.settleAll(CODES.CLOSED, "slothlet-vine: the link was closed");
+				// Drop every forwarded subscription (both halves) and tell the far side to release ours
+				// (best effort — it also drops them when its own serving closes).
+				events.teardown({ sendUnsubs: true });
 				// Release both channel registrations (see releaseChannelHandlers) — nothing is expected on
 				// either any more; every pending call is settled on the next line.
 				releaseChannelHandlers();
