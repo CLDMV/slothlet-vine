@@ -8,8 +8,14 @@
  * unsubscribe and `once` tear the subscription down, a host subscription is trusted (`allow`), and a
  * function in the payload degrades to trigger-only rather than crossing.
  *
- * Requires the two 3.18.0 enablers (`api.slothlet.event.resolveLevel` + `api.slothlet.caller`); the
- * whole suite is skipped cleanly on older slothlet so it stays green until the dependency bump lands.
+ * Requires the two event enablers (`api.slothlet.event.resolveLevel` + `api.slothlet.caller`) AND
+ * their cross-instance caller-isolation fix — slothlet ≥ 3.18.1. The enablers first shipped in 3.18.0,
+ * but 3.18.0 leaked a foreign instance's caller across the process-shared async context, so the serving
+ * side's forwarding listener was pinned to the far subscriber's identity and the host-only re-resolve
+ * was denied at emit (CLDMV/slothlet#436). That only bites a SAME-PROCESS transport — this loopback
+ * suite is exactly that — because a real worker/process/socket boundary can't propagate the context; so
+ * the gate is 3.18.1, not 3.18.0. The whole suite is skipped cleanly on older slothlet so it stays green
+ * until the dependency bump lands.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
@@ -24,10 +30,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVE_DIR = path.join(here, "fixtures", "serve-api");
 const GROW_DIR = path.join(here, "fixtures", "grow-api");
 
-// Event forwarding needs slothlet ≥ 3.18.0. Gate synchronously on the INSTALLED version so the
-// describe below can `skipIf` at collection time rather than failing on an older slothlet.
+// Same-process event forwarding needs slothlet ≥ 3.18.1 (the enablers plus the cross-instance
+// caller-isolation fix — see the header). Gate synchronously on the INSTALLED version so the describe
+// below can `skipIf` at collection time rather than failing on a slothlet that can't drive it.
 const installedSlothlet = createRequire(import.meta.url)("@cldmv/slothlet/package.json").version;
-const hasEnablers = versionGte(installedSlothlet, "3.18.0");
+const hasEnablers = versionGte(installedSlothlet, "3.18.1");
 
 /**
  * Compare two dotted `major.minor.patch` versions.
