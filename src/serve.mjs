@@ -36,6 +36,7 @@
  */
 import { CODES, VineError } from "./lib/errors.mjs";
 import { errorFrame, findFunctionArg, isSafePath, parseFrame, resultFrame, surfaceFrame } from "./lib/frame.mjs";
+import { createEventForwarder } from "./lib/events.mjs";
 import { assertApi, assertChannel } from "./lib/link.mjs";
 
 /**
@@ -57,10 +58,11 @@ import { assertApi, assertChannel } from "./lib/link.mjs";
  * @param {string[]} [options.modules] - Additional moduleIDs (or mount endpoints) whose leaves are
  *   unioned into the surface — the way to serve runtime `api.slothlet.api.add()` mounts, which
  *   `leaves(".")` does not cover. Unknown ids are skipped rather than fatal.
- * @param {number} [options.budgetMs] - Accepted and IGNORED in v1; the budget is a grow-side
- *   concern. Documented for symmetry with {@link import("./grow.mjs").grow} per the design.
- * @returns {Promise<{ leaves: string[], excluded: string[], close: () => void }>} The live serving
- *   handle. `leaves` is what the far side is offered; `excluded` is every CALLABLE leaf that was
+ * @param {number} [options.budgetMs=30000] - Settle budget for THIS end's own event subscriptions to
+ *   the far instance (a `sub-ack` that never arrives settles `VINE_BUDGET`). Not used for calls — a
+ *   serve answers calls, it does not make them.
+ * @returns {Promise<{ leaves: string[], excluded: string[], event: { on: Function, once: Function }, close: () => void }>}
+ *   The live serving handle. `leaves` is what the far side is offered; `excluded` is every CALLABLE leaf that was
  *   dropped on the way there — refused by {@link isSafePath} or filtered out by `paths` — so a leaf
  *   that quietly failed to appear is visible rather than a mystery. (Namespace and data records are
  *   not "dropped": they were never candidates for a callable surface.)
@@ -80,16 +82,26 @@ export async function serve(api, channel, options = {}) {
 	const served = new Set(leaves);
 	let closed = false;
 
+	// Bidirectional event forwarding (see lib/events.mjs). This end holds BOTH halves: it serves far
+	// subscriptions to this instance's events, AND can subscribe to the far instance's events through
+	// the returned `event` surface. `budgetMs` — a grow-side concern for calls — is here the sub-ack
+	// handshake budget for THIS end's own outgoing subscriptions.
+	const budgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0 ? Number(options.budgetMs) : 30_000;
+	const events = createEventForwarder({ api, channel, budgetMs, ended: () => (closed ? "closed" : null) });
+
 	channel.onMessage((message) => {
 		// The Channel contract forbids throwing into the transport, and this handler is the ONLY
 		// thing standing between a malformed frame and the transport's own dispatch loop.
 		try {
 			if (closed) return;
 			const frame = parseFrame(message);
-			if (frame === null || frame.type !== "call") return;
-			void answer(frame);
+			if (frame === null) return;
+			if (frame.type === "call") void answer(frame);
+			else if (frame.type === "sub" || frame.type === "unsub" || frame.type === "sub-ack" || frame.type === "event")
+				events.handleFrame(frame);
 		} catch {
-			// parseFrame is total and answer() never throws synchronously; this is belt-and-braces.
+			// parseFrame is total and answer()/events.handleFrame() never throw synchronously; this is
+			// belt-and-braces.
 		}
 	});
 
@@ -181,6 +193,17 @@ export async function serve(api, channel, options = {}) {
 		leaves,
 		excluded,
 		/**
+		 * Event-forwarding surface, identical to {@link import("./grow.mjs").grow}'s — this end can
+		 * subscribe to the FAR instance's events (the far side resolves the level and sends only what it
+		 * permits). Async because the granted level is resolved across the boundary. `on(event, listener,
+		 * { once })` / `once(event, listener)` return `Promise<{ level, off }>`.
+		 * @type {{ on: Function, once: Function }}
+		 */
+		event: {
+			on: (eventName, listener, options = {}) => events.subscribe(eventName, listener, options?.once === true),
+			once: (eventName, listener) => events.subscribe(eventName, listener, true)
+		},
+		/**
 		 * Stop answering. This detaches the vine ONLY — it deliberately does not call
 		 * `channel.close()`, because the transport is owned by whoever created it (one channel may
 		 * outlive one serving, and a Channel handed in by a consumer is not ours to tear down).
@@ -193,6 +216,8 @@ export async function serve(api, channel, options = {}) {
 		 */
 		close() {
 			closed = true;
+			// Drop every forwarded subscription (both halves) and tell the far side to release ours.
+			events.teardown({ sendUnsubs: true });
 			try {
 				channel.onMessage(() => {});
 			} catch {

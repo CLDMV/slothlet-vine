@@ -43,14 +43,19 @@ Rules:
 
 All frames are objects with a `type`. Unknown `type`s are ignored (forward compatibility).
 
-| Frame   | Shape                                                                                                        | Direction                                                                                  |
-| ------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| surface | `{ type: "surface", v: 1, leaves: string[] }`                                                                | serve → grow, once on link start (and again if the served surface changes — v1 sends once) |
-| call    | `{ type: "call", callId: string, path: string, args: unknown[] }`                                            | grow → serve                                                                               |
-| result  | `{ type: "result", callId: string, value?: unknown }`                                                        | serve → grow                                                                               |
-| error   | `{ type: "error", callId: string, error: { name: string, message: string, code?: string, stack?: string } }` | serve → grow                                                                               |
+| Frame   | Shape                                                                                                        | Direction                                                                                      |
+| ------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| surface | `{ type: "surface", v: 1, leaves: string[] }`                                                                | serve → grow, once on link start (and again if the served surface changes — v1 sends once)     |
+| call    | `{ type: "call", callId: string, path: string, args: unknown[] }`                                            | grow → serve                                                                                   |
+| result  | `{ type: "result", callId: string, value?: unknown }`                                                        | serve → grow                                                                                   |
+| error   | `{ type: "error", callId: string, error: { name: string, message: string, code?: string, stack?: string } }` | serve → grow                                                                                   |
+| sub     | `{ type: "sub", subId: string, event: string, subscriberPath: string \| null }`                              | either → either — subscribe to a far event AS an identity (event forwarding is bidirectional)  |
+| sub-ack | `{ type: "sub-ack", subId: string, level: "deny" \| "notify" \| "allow" }`                                   | reply to a `sub` — the resolved delivery level for that subscription                           |
+| event   | `{ type: "event", subId: string, event: string, at: number, instanceID: string, payload?: unknown }`         | emitting → subscribing — one forwarded delivery (the `payload` key is present ONLY at `allow`) |
+| unsub   | `{ type: "unsub", subId: string }`                                                                           | subscribing → emitting — tear the subscription down                                            |
 
 - `callId`: unique per grow-side link (monotonic counter + link nonce; never `Math.random` collisions).
+- `subId`: the event-forwarding correlation id. Event forwarding is bidirectional, so EACH end draws its own subscriptions' `subId`s from its own nonce (separate from `callId`'s, so a `sub-ack` and a call `result` can never be confused, and separate per end, so the two directions' ids never collide); frames route by TYPE regardless. `subscriberPath` is the subscriber's own identity (from `api.slothlet.caller()`), matched — never mounted — against the EMITTING instance's event rules, so an untrusted string cannot pollute a prototype the way an unguarded `call` path could. See [Event forwarding](#event-forwarding-schema-v1).
 - `path`: the dotted leaf path exactly as served (e.g. `exts.pdfViewer.open`).
 - Function-valued `args` are **rejected grow-side** before dispatch (`VINE_DATA_ONLY`) — the vine is data-only in v1. So are function-valued **return values**, rejected serve-side with the same code; see [Data-only, both directions](#data-only-both-directions).
 - Errors cross as data and are re-thrown grow-side as `VineRemoteError` (name/message/code preserved, remote stack attached as `.remoteStack`).
@@ -87,6 +92,38 @@ Semantics:
 - **Settle-once** everywhere: a callId settles exactly once (result | error | budget | gone | closed); later frames for it are dropped.
 
 Error codes (all `VineError` subclasses carrying `.code`): `VINE_GONE`, `VINE_BUDGET`, `VINE_CLOSED`, `VINE_DATA_ONLY`, `VINE_BAD_FRAME`, `VINE_NO_LEAF` (call for a path not in the served surface), `VINE_REMOTE`. Remote application errors re-throw as `VineRemoteError` (their own name/message/code) — except a `VINE_*` code, which is never adopted from the wire; see [Errors](#errors) below.
+
+## Event forwarding (schema v1)
+
+The vine also carries slothlet's instance-wide **events** (`api.slothlet.event`, slothlet #407) across the boundary, **in both directions**: an event emitted in either linked instance reaches subscribers in the other. This works because the two instances are copies of one api (per-leaf stubs at identical paths) and therefore hold the SAME event permissions. slothlet stays boundary-agnostic — it gates SUBSCRIBERS, never emitters, resolving each subscriber to one of three levels (`deny` = nothing, `notify` = a trigger with no payload, `allow` = trigger + payload) — so the one boundary rule the vine adds is: **a subscriber only ever receives what its level allows, and nothing more than that is ever put on a wire heading toward it.** Because the rules are identical in every instance, the **emitting** side resolves each far subscriber itself and sends only what its level permits — so a `notify` subscriber's payload never crosses — and whichever side resolves gets the same answer, so there is no trust flag, no authority handoff, and no gate on who may emit. It rests on two slothlet primitives, present on both ends: `api.slothlet.caller()` (a subscriber's own identity) and `api.slothlet.event.resolveLevel(subscriberPath, event)` (the emitting side's resolver). Both first shipped in **3.18.0**, but a **same-process** transport (the loopback, or any pair sharing a process) requires **≥ 3.18.1**: 3.18.0 leaked a foreign instance's caller across the process-shared async context, pinning the emitting side's forwarding listener to the far subscriber's identity so the host-only re-resolve was denied at emit and nothing was forwarded (CLDMV/slothlet#436). A real cross-process boundary (worker, process, socket) cannot propagate that context and works on 3.18.0+, but 3.18.1 is the floor for reliable forwarding across every transport.
+
+Both ends expose the same surface — `link.event` on the grow side, the serve handle's `event` on the serve side — async, because the granted level is resolved across the boundary:
+
+```js
+// grow side subscribing to a serve-emitted event:
+const { level, off } = await link.event.on("orders.created", (payload, meta) => {
+	// meta is { event, at, instanceID }; payload is undefined at `notify`.
+});
+// serve side subscribing to a grow-emitted event (identical shape):
+const sub = await serving.event.on("renderer.click", (payload, meta) => {});
+// .once(event, listener) is the single-delivery form on either surface.
+```
+
+The flow, per subscription, is symmetric — "near" is the subscribing side, "far" the emitting side (either can be grow or serve):
+
+1. **The near side subscribes as its real identity.** `event.on` reads `api.slothlet.caller()` — the subscribing module's own dotted path (the same identity `event.on` captures locally), `null` for a host subscription — and sends a `sub` frame `{ subId, event, subscriberPath }`. The identity is captured synchronously before the first `await`, while the subscriber's extent is the active caller.
+2. **The far side resolves and acks.** The emitting side calls `api.slothlet.event.resolveLevel(subscriberPath, event)` against its own (identical) rules and returns the level in a `sub-ack`. A downgrade or denial is therefore a **distinct, catchable result** on the near side (`{ level }`), never a silent absence of payloads — which makes a manifest/consumer mismatch or a version skew observable. At `deny` the near side registers no listener and `off` is a no-op.
+3. **The far side host-subscribes and cuts per emit.** Unless denied, the emitting side subscribes to the event at the host level (full payload) and, on each emit, **re-resolves** the far subscriber's level and forwards an `event` frame carrying the payload only at `allow` — omitting the `payload` key entirely at `notify`. Re-resolving per emit (not just at subscribe) honours a later rule change live, and the `subscriberPath` is only ever glob-matched, never mounted.
+4. **The near side re-delivers.** The `event` frame is delivered to the subscription's listener as `(payload, meta)` — `payload` `undefined` when the key was absent (`notify`), the value when present (`allow`). A `once` subscription is torn down before delivery and an `unsub` is sent.
+
+Each end runs both halves at once (`src/lib/events.mjs`), and the two never cross wires: an end draws its own subscriptions' `subId`s from its own nonce, and frames are routed by TYPE (`sub`/`unsub` → the serving half, `sub-ack`/`event` → the subscribing half), so the same four frames flow both ways over one channel.
+
+Cross-cutting rules, consistent with the call path:
+
+- **Data-only.** Event payloads are data. A function anywhere in a payload cannot cross (over a by-reference transport it would hand the far side a live closure), so an `allow` delivery whose payload hides a function degrades to trigger-only rather than leaking it — the emitting side's `findFunctionArg` check, the same guard the call path uses on arguments and return values.
+- **Lifecycle.** `off()` sends `unsub` and stops local delivery; either end's `close()` unsubscribes every subscription it made, tells the far side to drop them, and settles in-flight handshakes `VINE_CLOSED`; far-side death settles them `VINE_GONE`. A subscribe handshake has its own budget (a `sub-ack` that never arrives settles `VINE_BUDGET`). Each end drops every host-level listener it registered on close.
+- **Enforcement is on the emitting side; the untrusted-boundary case is v1's open question.** The level is resolved and the payload cut where the event originates, against that instance's rules — so a `notify` subscriber's payload never leaves the emitter. What is out of scope for v1 is authenticating a subscriber's identity across an **untrusted** boundary — a browser that could forge `subscriberPath` to claim a higher level (CLDMV/slothlet-vine#20). That is a transport concern, orthogonal to direction: like the rest of the vine's v1 security model, the boundary is assumed to be one you established (a worker you spawned, a socket you authenticated), and a transport facing an untrusted network must establish identity at its own layer.
+- **Graceful degradation.** An end without `resolveLevel` (slothlet < 3.18.0) refuses every incoming `sub` with a catchable `deny` rather than forwarding ungated — the vine never carries a payload it cannot gate. An end without `api.slothlet.caller()` throws a clear `TypeError` from `event.on`. On 3.18.0 the primitives are _present_ (so these guards pass) but the cross-instance caller bug silently drops same-process deliveries — hence the ≥ 3.18.1 floor above for a shared-process transport; a real cross-process boundary is unaffected.
 
 ## Built-in transports (each: one self-contained module + e2e test)
 
