@@ -1,6 +1,6 @@
 {
 	"name": "@cldmv/slothlet-vine",
-	"version": "1.1.1",
+	"version": "1.1.2",
 	"description": "Vines between slothlet api trees — location-transparent forwarding leaves over pluggable transports (Web Worker postMessage, worker_threads, process IPC, WebSocket), permission-gated by slothlet itself.",
 	"type": "module",
 	"license": "Apache-2.0",
@@ -74,7 +74,7 @@
 		"format:check": "prettier --config .configs/.prettierrc --check ."
 	},
 	"peerDependencies": {
-		"@cldmv/slothlet": ">=3.14.0",
+		"@cldmv/slothlet": ">=3.20.0",
 		"ws": ">=8.0.0"
 	},
 	"peerDependenciesMeta": {
@@ -86,7 +86,7 @@
 		"@cldmv/eslint-plugin-jsonv": "^1.0.3",
 		"@cldmv/jsonv": "^1.0.2",
 		"@cldmv/prettier-plugin-jsonv": "^1.0.1",
-		"@cldmv/slothlet": "^3.18.1",
+		"@cldmv/slothlet": "^3.20.0",
 		"@cldmv/vitest-runner": "^1.2.0",
 		"@eslint/css": "^2.0.0",
 		"@eslint/js": "^10.0.1",
