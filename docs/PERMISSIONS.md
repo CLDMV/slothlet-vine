@@ -10,6 +10,8 @@ This page is about that interaction specifically. For the permission system itse
 
 Slothlet's permission rules gate calls made by a **module** — `self.exts.foo.bar()` from inside some other module's code. A call made through the bound handle `slothlet()` itself returned — the host — carries host standing and is **not checked**. That carve-out is slothlet's own design, not a vine gap, but it means "permission-gated" specifically describes module-initiated calls. A host that forwards a caller's request on someone else's behalf is responsible for its own authorization before it does; the vine doesn't add one on top.
 
+**v1 assumes an authenticated, cooperative peer.** The far side is trusted to gate its own module-initiated calls at the stub and to report its subscribers' identities honestly; the serving side does not re-check either. A transport facing an untrusted network must establish identity at its own layer. Binding a serve-side principal to the authenticated channel is tracked in [#33](https://github.com/CLDMV/slothlet-vine/issues/33).
+
 ```javascript
 const growApi = await slothlet({
 	base: "./api",
