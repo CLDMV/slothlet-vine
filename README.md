@@ -16,16 +16,17 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ## ✨ What's New
 
-### Latest: v1.1.0 (September 2026)
+### Latest: v1.1.2 (September 2026)
 
-- **Cross-vine event forwarding, both directions (#20)** — slothlet's instance-wide events now travel across a vine: an event emitted in either linked instance reaches subscribers in the other, gated by that emitter's own permissions. Each subscriber is resolved on the **emitting** side to one of three levels (`deny` / `notify` / `allow`) and receives only what its level allows — a `notify` subscriber's payload never crosses. `link.event.on` and the serve handle's `event.on` mirror slothlet's own `event.on` shape. Requires `@cldmv/slothlet` ≥ 3.18.1 for a same-process transport (see the changelog).
-- [View full v1.1.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.0.md)
+- **`@cldmv/slothlet` peer floor raised to `>=3.20.0` (#31)** — the suite now runs against slothlet 3.20.0, so that is the version the peer range guarantees. No runtime source changed; the rest of the release is dev-tooling bumps.
+- [View full v1.1.2 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.2.md)
 
 ### Recent Releases
 
+- **v1.1.1** (September 2026) — CI-only: release-flow caller workflows synced to the current v4 templates ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.1.md))
+- **v1.1.0** (September 2026) — cross-vine event forwarding in both directions, gated by the emitter's own permissions ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.0.md))
 - **v1.0.2** (September 2026) — dev-only: `@cldmv/slothlet` dev pin `3.15.0` → `3.15.1` (peer floor unchanged) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.2.md))
 - **v1.0.1** (August 2026) — dev-only: `eslint` `10.9.0` → `10.9.1` ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.1.md))
-- **v1.0.0** (August 2026) — first real release: `grow()`/`serve()`, the frame protocol and error taxonomy, a reusable Channel conformance harness, and all five built-in transports tested end-to-end over their real boundaries ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.0.md))
 
 📚 **For complete version history and detailed release notes, see the [docs/changelog/](https://github.com/CLDMV/slothlet-vine/tree/master/docs/changelog/) folder.**
 
