@@ -40,6 +40,7 @@ import { CODES, VineError, fromWire } from "./lib/errors.mjs";
 import { callFrame, findFunctionArg, isSafePath, parseFrame } from "./lib/frame.mjs";
 import { createEventForwarder } from "./lib/events.mjs";
 import { PendingTable, assertApi, assertChannel, makeNonce, onCloseSafe } from "./lib/link.mjs";
+import { assertPrincipalSupport, bindPrincipal } from "./lib/principal.mjs";
 
 /** Default per-call settle budget, in ms. @type {number} */
 export const DEFAULT_BUDGET_MS = 30_000;
@@ -66,13 +67,26 @@ export const DEFAULT_BUDGET_MS = 30_000;
  *   have to trust that it did. Same fail-closed reading as
  *   {@link import("./serve.mjs").serve}: an array with no usable prefix mounts nothing; a non-array
  *   value is ignored.
+ * @param {string|{ path: string, context?: object }|(() => string|{ path: string, context?: object })} [options.principal] -
+ *   The **channel principal** (#33) for the EVENT SERVER-HALF of this end only. A grow end answers no
+ *   `call` frames (a stray one is ignored), but it does answer the far side's `sub` frames for THIS
+ *   instance's events — and the trusted end of a channel is not always the serving end (a host that
+ *   grows leaves out of an untrusted worker plugin still serves that plugin's subscriptions). With a
+ *   principal, every far `sub` is resolved as `principal.path` (inside `context.run(principal.context)`
+ *   when a context is given), the far `subscriberPath` can only NARROW that level, and `null` no
+ *   longer means "host". Same shapes and fail-closed rules as `serve()`'s. Only the event-side
+ *   preconditions apply here — the permission system must be enabled and `api.slothlet.event.resolveLevel`
+ *   must exist (plus a working `context.run` when a static principal carries a `context`);
+ *   `permissions.global.checkCall` is NOT required, because a grow answers no calls. Omit it for a
+ *   trusted transport: nothing changes.
  * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], close: () => Promise<void>, closed: Promise<{reason: string, info?: object}> }>}
  *   The live link. The three path lists are DISJOINT and together account for every leaf the far
  *   side published: `leaves` are the paths actually mounted and forwarding; `skipped` are far leaves
  *   refused locally (unsafe path, outside `paths`, rejected by `add()`, or published after the link
  *   had already ended); `collisions` are paths the local instance already occupied, which are NOT
  *   mounted — the incumbent keeps answering there and the far leaf is unreachable through this link.
- * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel.
+ * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel — or, with a
+ *   `principal`, when it is malformed or the instance cannot enforce it (see `options.principal`).
  * @throws {VineError} `VINE_GONE` when the channel closes before the surface arrives, `VINE_BUDGET`
  *   when the handshake budget elapses first.
  *
@@ -84,6 +98,17 @@ export const DEFAULT_BUDGET_MS = 30_000;
 export async function grow(api, channel, options = {}) {
 	assertChannel(channel, "grow");
 	assertApi(api, "grow", ["add", "remove"]);
+	// The channel principal (#33) for this end's event server-half — see lib/principal.mjs. A grow
+	// answers no calls, so only the event-side preconditions are checked; `context.run` is probed only
+	// when a static principal actually carries a context (a resolver's answer is per frame, and a
+	// `run` that fails there denies that frame).
+	const principal = bindPrincipal(options.principal, "grow");
+	if (principal)
+		await assertPrincipalSupport(
+			api,
+			{ run: typeof principal.declared !== "function" && principal.declared.context !== undefined },
+			"grow"
+		);
 
 	const budgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0 ? Number(options.budgetMs) : DEFAULT_BUDGET_MS;
 	const handshakeMs = handshakeBudget(options.handshakeMs, budgetMs);
@@ -110,6 +135,7 @@ export async function grow(api, channel, options = {}) {
 		api,
 		channel,
 		budgetMs,
+		principal,
 		ended: () => (state.gone ? "gone" : state.closed ? "closed" : null)
 	});
 

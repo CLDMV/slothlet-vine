@@ -69,6 +69,8 @@ An argument or return value the structured-clone algorithm itself can't handle (
 
 The `post-message` transport moves frames; it doesn't decide who's allowed to call what. If the point of isolating something into a worker is to restrict what can reach it, pair the vine with slothlet's own permission rules on the **grow** side — see [PERMISSIONS.md](PERMISSIONS.md). A denied module call is stopped before the stub ever posts a frame, so nothing reaches the worker at all.
 
+That grow-side gate protects a trusted page from its own modules. It does nothing for the **serving** end when the page itself is the party to distrust — a renderer talking to a privileged host over a socket, or a host growing leaves out of a worker plugin it did not write. For that direction the serving (or growing) end binds a channel `principal` — the identity the transport authenticated, handed to `serve()` / `grow()` — and slothlet's rules on the trusted side decide what that identity may call and subscribe to, before anything runs. See [Serving to an untrusted peer](PERMISSIONS.md#serving-to-an-untrusted-peer-the-channel-principal). A serve bound to a principal needs the async (Node) runtime; a browser-side instance runs the live runtime, where concurrent scopes on one instance interleave, so bind principals on the Node end of a link, not in the page.
+
 ---
 
 ## See also
