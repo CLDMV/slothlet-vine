@@ -31,13 +31,17 @@
  *
  * ## Capabilities & the choices behind them
  *
- * `{ structuredClone: false, codec: "json", buffersUntilHandler: false }`.
+ * `{ structuredClone: false, codec: "json", buffersUntilHandler: true }`.
  *
- * - **`buffersUntilHandler: false`** — a message that arrives before `onMessage` has a handler is
- *   DROPPED, not replayed. `ws` does not queue emitted events; honouring that honestly is more
- *   truthful than faking a buffer this medium does not have. It is safe in practice because both
- *   `serve()` and `grow()` register their receive handler synchronously, before the socket can
- *   deliver anything (a client socket only starts delivering after its async `open`).
+ * - **`buffersUntilHandler: true`** — this module attaches its `"message"` listener at
+ *   {@link createChannel} time, and a message that arrives before `onMessage` has a handler is
+ *   decoded and QUEUED, then replayed in order once a handler is registered (see
+ *   `src/lib/inbox.mjs`). A consumer may therefore create the channel, `await` something, and only
+ *   then call `grow()` without losing the far side's `surface` frame (CLDMV/slothlet-vine#41). What
+ *   it cannot recover is a message that reached the socket before `createChannel()` ran: `ws` emits
+ *   `"message"` to whatever listeners exist at the time and keeps no queue, so wrap a socket in the
+ *   same tick it is created (a client `new WebSocket(url)`, or the socket handed to a server
+ *   `"connection"` listener) — before any `await`.
  * - **Send before `OPEN` is BUFFERED, then flushed on `open`.** A client `new WebSocket(url)` connects
  *   asynchronously, so `send()` may be called on a `CONNECTING` socket; queuing until `open` (rather
  *   than erroring) is the faithful choice for a socket that simply is not ready yet. A send on a
@@ -60,6 +64,8 @@
  * CONSTRUCTS a client socket, so it is the one that imports `ws` — and it is where a clear
  * "install the optional peer dependency 'ws'" error is thrown when the import fails.
  */
+
+import { createInbox } from "../lib/inbox.mjs";
 
 /** WHATWG WebSocket `readyState` values (`ws` conforms). @type {number} */
 const CONNECTING = 0;
@@ -86,7 +92,8 @@ const DECODER = new TextDecoder();
  *
  * const wss = new WebSocketServer({ port: 0 });
  * wss.on("connection", async (socket) => {
- *   await serve(api, createChannel(socket), { paths: ["exts"] });
+ *   const channel = createChannel(socket); // wrap first — before any await
+ *   await serve(api, channel, { paths: ["exts"] });
  * });
  */
 export function createChannel(socket, options) {
@@ -103,8 +110,8 @@ export function createChannel(socket, options) {
 		);
 	}
 
-	/** The single receive handler; last `onMessage` registration wins. @type {Function|null} */
-	let messageHandler = null;
+	/** Queues decoded frames that arrive before a receive handler is registered, then replays them in order. */
+	const inbox = createInbox();
 	/** The single far-side-death handler. @type {Function|null} */
 	let closeHandler = null;
 	/** Frames sent while the socket was still `CONNECTING`, flushed on `open`. @type {string[]} */
@@ -154,14 +161,15 @@ export function createChannel(socket, options) {
 	}
 
 	/**
-	 * Dispatch one inbound socket message to the registered handler. Suppressed after a local `close()`
-	 * — an inbound frame that arrives once this end has torn down is dropped, matching the other four
-	 * transports (the core tolerates a dropped post-close frame).
+	 * Decode one inbound socket message and hand it to the inbox, which delivers it to the registered
+	 * handler (insulated from anything it throws) or queues it until one is registered. Suppressed
+	 * after a local `close()` — the inbox is closed with the channel, so an inbound frame that arrives
+	 * once this end has torn down is dropped, matching the other four transports (the core tolerates a
+	 * dropped post-close frame).
 	 * @param {unknown} data - The raw `'message'` payload.
 	 * @returns {void}
 	 */
 	function onSocketMessage(data) {
-		if (localClosing || !messageHandler) return; // buffersUntilHandler: false — nothing to deliver to yet.
 		const text = toText(data);
 		if (text === null) return;
 		let frame;
@@ -170,11 +178,7 @@ export function createChannel(socket, options) {
 		} catch {
 			return; // A malformed payload is dropped, never fed to the handler or thrown into the socket.
 		}
-		try {
-			messageHandler(frame);
-		} catch {
-			// Contract: handlers never throw into the transport.
-		}
+		inbox.deliver(frame);
 	}
 
 	/**
@@ -202,7 +206,7 @@ export function createChannel(socket, options) {
 	socket.on("error", onSocketError);
 
 	return {
-		capabilities: { structuredClone: false, codec: "json", buffersUntilHandler: false },
+		capabilities: { structuredClone: false, codec: "json", buffersUntilHandler: true },
 
 		/**
 		 * Encode one frame and deliver it. Buffered until `open` if the socket is still connecting; a
@@ -238,12 +242,13 @@ export function createChannel(socket, options) {
 
 		/**
 		 * Register the (single) receive handler; a later registration replaces the earlier one. A
-		 * non-function clears it. Frames that arrived before a handler existed were dropped.
+		 * non-function clears it. Frames that arrived while no handler was registered are replayed to
+		 * it, in order, on the next microtask.
 		 * @param {(message: object) => void} handler - The receive handler.
 		 * @returns {void}
 		 */
 		onMessage(handler) {
-			messageHandler = typeof handler === "function" ? handler : null;
+			inbox.setHandler(handler);
 		},
 
 		/**
@@ -265,7 +270,7 @@ export function createChannel(socket, options) {
 		close() {
 			if (localClosing) return;
 			localClosing = true;
-			messageHandler = null;
+			inbox.close();
 			closeHandler = null;
 			pendingSends.length = 0;
 			try {

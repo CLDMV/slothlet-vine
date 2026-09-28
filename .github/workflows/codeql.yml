@@ -61,9 +61,7 @@ on:
         - cron: "37 14 * * 1" # weekly Monday 14:37 UTC; GitHub updates queries over time
 
 permissions:
-    security-events: write
     contents: read
-    actions: read
 
 concurrency:
     group: codeql-${{ github.workflow }}-${{ github.ref }}
@@ -71,6 +69,10 @@ concurrency:
 
 jobs:
     analyze:
+        permissions:
+            security-events: write
+            contents: read
+            actions: read
         uses: CLDMV/.github/.github/workflows/reusable-codeql.yml@v4
         with:
             languages: "javascript-typescript"

@@ -15,26 +15,33 @@
  *   be paired in-process for the conformance suite (a real structured-clone boundary, no second
  *   thread).
  *
- * Both sides declare `{ structuredClone: true, codec: "none", buffersUntilHandler: false }`:
+ * Both sides declare `{ structuredClone: true, codec: "none", buffersUntilHandler: true }`:
  *
  * - **`structuredClone: true`, `codec: "none"`** — the medium structured-clones, so frames are
  *   handed to `postMessage` verbatim (never JSON). `Date` / `Map` / `Set` survive; only the
  *   documented data-only rule (no functions) bounds what may cross.
- * - **`buffersUntilHandler: false`** — a `MessagePort` in Node buffers messages posted before a
- *   `"message"` listener exists, so this module attaches its OWN listener eagerly (at construction)
- *   and DROPS any frame that arrives before the core registers its handler. Dropping rather than
- *   Node-buffering is what makes the declaration honest, and it is safe for the vine: `grow()` and
- *   `serve()` both register `onMessage` synchronously — before the event loop can deliver the first
- *   worker message — so the surface frame is never among the dropped.
+ * - **`buffersUntilHandler: true`** — this module attaches its OWN `"message"` listener eagerly (at
+ *   construction), and any frame that arrives before the core registers its handler is QUEUED and
+ *   replayed, in order, on `onMessage()` (see `src/lib/inbox.mjs`). A consumer may therefore create
+ *   the channel, `await` something, and only then call `grow()` without losing the far side's
+ *   one-shot `surface` frame (CLDMV/slothlet-vine#41).
+ *
+ * What this module CANNOT recover is a message that reached a `Worker` before `createChannel(worker)`
+ * attached any listener at all: Node's `Worker` relays its internal port with `this.emit("message")`
+ * from a listener Node itself attaches in the `Worker` constructor, so a message emitted while the
+ * `Worker` has no `"message"` listener is simply gone. Call `createChannel(worker)` in the same tick
+ * as `new Worker(...)` — before any `await`. (The child side has no such gap: `parentPort` is a
+ * `MessagePort`, which queues messages until a listener starts it.)
  *
  * Ownership: {@link createChannel}`.close()` detaches its listeners but NEVER terminates the worker —
  * the caller made the worker and owns its lifecycle. {@link createParentChannel}`.close()` closes the
  * port it wraps, because there the port IS the transport.
  */
 import { parentPort as defaultParentPort } from "node:worker_threads";
+import { createInbox } from "../lib/inbox.mjs";
 
 /** The capabilities every worker-threads endpoint declares. @type {{structuredClone: boolean, codec: string, buffersUntilHandler: boolean}} */
-const CAPABILITIES = Object.freeze({ structuredClone: true, codec: "none", buffersUntilHandler: false });
+const CAPABILITIES = Object.freeze({ structuredClone: true, codec: "none", buffersUntilHandler: true });
 
 /**
  * PARENT side. Wrap a `worker_threads.Worker` as a Channel whose far side is the code running inside
@@ -54,8 +61,12 @@ const CAPABILITIES = Object.freeze({ structuredClone: true, codec: "none", buffe
  * import { grow } from "@cldmv/slothlet-vine";
  * import { createChannel } from "@cldmv/slothlet-vine/transport/worker-threads";
  *
+ * // Wrap the worker in the SAME tick it is created — before any await. A message the worker posts
+ * // before a listener exists is dropped by Node itself; once wrapped, early frames are queued.
  * const worker = new Worker(new URL("./serve-worker.mjs", import.meta.url));
- * const link = await grow(hostApi, createChannel(worker), { budgetMs: 5000 });
+ * const channel = createChannel(worker);
+ * const hostApi = await slothlet({ base: API_DIR }); // safe: the surface frame is queued meanwhile
+ * const link = await grow(hostApi, channel, { budgetMs: 5000 });
  */
 export function createChannel(worker) {
 	if (
@@ -109,8 +120,9 @@ export function createParentChannel(port = defaultParentPort) {
  * Build a Channel over a message target (a `Worker` or a `MessagePort`). The two exported endpoints
  * differ only in which events mean "the far side is gone" and whether closing owns the target.
  *
- * A single, always-attached `"message"` listener keeps the target flowing from construction, so the
- * pre-handler drop (not Node's buffer) is what backs `buffersUntilHandler: false`. Every consumer
+ * A single, always-attached `"message"` listener keeps the target flowing from construction and feeds
+ * an inbox that queues frames until the core registers its handler (`buffersUntilHandler: true`),
+ * then replays them in order. Every consumer
  * callback is insulated: a throwing `onMessage`/`onClose` handler can never surface as a transport
  * fault, per the Channel contract.
  *
@@ -122,27 +134,20 @@ export function createParentChannel(port = defaultParentPort) {
  * @returns {object} The Channel.
  */
 function makeChannel(target, { deathEvents, ownsTarget }) {
-	/** @type {((message: object) => void) | null} The single receive handler; null until the core registers one. */
-	let handler = null;
+	/** Queues frames that arrive before the core registers its handler, then replays them in order. */
+	const inbox = createInbox();
 	/** @type {((info?: object) => void) | null} The single far-side-death handler. */
 	let onCloseHandler = null;
 	let closed = false;
 	let deathFired = false;
 
 	/**
-	 * The one persistent inbound listener. Delivers to the core's handler, or drops the frame when
-	 * none is registered yet — the deliberate `buffersUntilHandler: false` behaviour.
+	 * The one persistent inbound listener. Hands the frame to the inbox, which delivers it to the
+	 * core's handler — or queues it until one is registered (`buffersUntilHandler: true`).
 	 * @param {object} message - The inbound frame.
 	 * @returns {void}
 	 */
-	const onMessageRaw = (message) => {
-		if (closed || handler === null) return;
-		try {
-			handler(message);
-		} catch {
-			// Channel contract: a consumer handler must never throw into the transport.
-		}
-	};
+	const onMessageRaw = (message) => inbox.deliver(message);
 
 	/**
 	 * Fire the far-side-death handler exactly once. Bound per death event so it can be detached.
@@ -205,12 +210,13 @@ function makeChannel(target, { deathEvents, ownsTarget }) {
 
 		/**
 		 * Register the (single) receive handler; a later registration replaces the earlier one. A
-		 * non-function clears it. Frames that arrived before this point were dropped, not buffered.
+		 * non-function clears it. Frames that arrived while no handler was registered are replayed to
+		 * it, in order, on the next microtask.
 		 * @param {(message: object) => void} fn - The receive handler.
 		 * @returns {void}
 		 */
 		onMessage(fn) {
-			handler = typeof fn === "function" ? fn : null;
+			inbox.setHandler(fn);
 		},
 
 		/**
@@ -232,7 +238,7 @@ function makeChannel(target, { deathEvents, ownsTarget }) {
 		close() {
 			if (closed) return;
 			closed = true;
-			handler = null;
+			inbox.close();
 			onCloseHandler = null;
 			try {
 				target.removeListener("message", onMessageRaw);

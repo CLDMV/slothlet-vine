@@ -122,7 +122,7 @@ function tick() {
 describe("process transport specifics", () => {
 	it("declares its capabilities", () => {
 		const { a } = makeFakeChildPair();
-		expect(createChannel(a).capabilities).toEqual({ structuredClone: true, codec: "none", buffersUntilHandler: false });
+		expect(createChannel(a).capabilities).toEqual({ structuredClone: true, codec: "none", buffersUntilHandler: true });
 	});
 
 	it("rejects a non-ChildProcess to createChannel", () => {

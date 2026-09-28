@@ -66,9 +66,9 @@ afterEach(async () => {
 /**
  * Stand up a full vine over a worker_threads MessageChannel: a serving instance from `serveDir`, a
  * growing instance from the grow fixtures, and a link between them. `grow()` is started BEFORE
- * `serve()` runs so its receive handler is registered before the surface frame is posted — the
- * post-message transport declares `buffersUntilHandler: false`, so a surface delivered before the
- * handler exists would be dropped rather than replayed.
+ * `serve()` runs so its receive handler is registered before the surface frame is posted. (The
+ * transport now queues a surface that arrives before the handler exists — `buffersUntilHandler:
+ * true`, see `tests/early-frames.test.vitest.mjs` — so this ordering is no longer load-bearing.)
  * @param {object} [options]
  * @param {object} [options.permissions] - Permission config for the GROW-side instance.
  * @param {object} [options.growOptions] - Options forwarded to `grow()`.
@@ -373,7 +373,7 @@ describe("post-message transport specifics", () => {
 		const a = createChannel(port1);
 		const b = createChannel(port2);
 		for (const channel of [a, b]) {
-			expect(channel.capabilities).toEqual({ structuredClone: true, codec: "none", buffersUntilHandler: false });
+			expect(channel.capabilities).toEqual({ structuredClone: true, codec: "none", buffersUntilHandler: true });
 		}
 		a.close();
 		b.close();
@@ -419,7 +419,7 @@ describe("post-message transport specifics", () => {
 		b.close();
 	});
 
-	it("drops frames that arrive before onMessage is registered (buffersUntilHandler: false)", async () => {
+	it("queues frames that arrive before onMessage is registered and replays them first (buffersUntilHandler: true)", async () => {
 		const { port1, port2 } = new MessageChannel();
 		const a = createChannel(port1);
 		const b = createChannel(port2);
@@ -429,7 +429,7 @@ describe("post-message transport specifics", () => {
 		b.onMessage((m) => seen.push(m.callId));
 		a.send({ type: "result", callId: "late", value: "late" });
 		await new Promise((resolve) => setTimeout(resolve, 20));
-		expect(seen).toEqual(["late"]);
+		expect(seen).toEqual(["early", "late"]);
 		a.close();
 		b.close();
 	});

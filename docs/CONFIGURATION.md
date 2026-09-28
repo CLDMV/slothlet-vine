@@ -89,6 +89,8 @@ Deadline for the `surface` frame itself — how long `grow()` will `await` befor
 const link = await grow(api, channel, { budgetMs: 5000, handshakeMs: 30_000 });
 ```
 
+A handshake `VINE_BUDGET` against a far side that is known to be up usually means its `surface` frame arrived before the channel had a listener: a node `Worker` and a `ws` socket drop a message that arrives with no listener attached. Create the channel in the same tick as the worker/socket, before any `await` — see [Transports → Create the channel before you `await` anything](TRANSPORTS.md#create-the-channel-before-you-await-anything).
+
 ### `paths`
 
 **Type**: `string[]`

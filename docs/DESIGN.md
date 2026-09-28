@@ -23,7 +23,8 @@ Looking for a guide rather than the normative spec? See [CONFIGURATION.md](CONFI
  * @property {{ structuredClone?: boolean, codec?: "none"|"json", buffersUntilHandler?: boolean }} [capabilities]
  *   — `structuredClone`/`codec`: what the medium preserves and how it encodes. `buffersUntilHandler`:
  *   whether frames that arrive before `onMessage` is registered are buffered (`true`) or may be
- *   dropped (absent/`false`) — the conformance suite asserts whichever the transport declares.
+ *   dropped (absent/`false`) — the conformance suite asserts whichever the transport declares. Every
+ *   built-in transport buffers (CLDMV/slothlet-vine#41).
  */
 ```
 

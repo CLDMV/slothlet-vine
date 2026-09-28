@@ -179,7 +179,7 @@ describe("websocket specifics", () => {
 		const pair = await standUpPair();
 		try {
 			for (const socket of [pair.serverSocket, pair.clientSocket]) {
-				expect(createChannel(socket).capabilities).toEqual({ structuredClone: false, codec: "json", buffersUntilHandler: false });
+				expect(createChannel(socket).capabilities).toEqual({ structuredClone: false, codec: "json", buffersUntilHandler: true });
 			}
 		} finally {
 			await tearDownPair(pair);
