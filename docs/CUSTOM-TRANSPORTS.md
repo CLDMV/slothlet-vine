@@ -146,7 +146,7 @@ channelConformance(
 - Delivery is genuinely asynchronous — never synchronous inside `send()`.
 - Order is preserved across a 50-frame burst, and interleaved bursts from both ends don't cross-contaminate.
 - A large-ish payload (a 200 KB string, a 5000-element array, nested objects) survives intact.
-- The suite reads `capabilities.buffersUntilHandler` and asserts **whichever** behavior your transport declares — a frame sent before `onMessage()` is ever called is either replayed (`true`) or dropped (absent/`false`); what's not valid is claiming one and doing the other.
+- The suite reads `capabilities.buffersUntilHandler` and asserts **whichever** behavior your transport declares — a frame sent before `onMessage()` is ever called is either replayed (`true`) or dropped (absent/`false`); what's not valid is claiming one and doing the other. Buffering (`true`) is the consumer-friendly choice and what every built-in transport does: a consumer that creates a channel and then `await`s something before `grow()` would otherwise lose the far side's one-shot `surface` frame.
 - A second `onMessage()` registration fully replaces the first.
 - A throwing handler doesn't break the channel — a later, correctly-behaving handler still receives subsequent frames.
 - If your transport declares `close`/`onClose`, closing one end fires the _other_ end's `onClose` exactly once, and does **not** fire the closer's own `onClose`. If it doesn't declare them, this case is skipped — a channel with no such capability has nothing further to assert.

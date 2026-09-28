@@ -9,14 +9,36 @@ The five built-in Channel implementations, when to reach for each, and the owner
 | Subpath                    | Boundary           |   `structuredClone`    | `codec`  | `buffersUntilHandler` |          Real death detection          |
 | -------------------------- | ------------------ | :--------------------: | :------: | :-------------------: | :------------------------------------: |
 | `transport/loopback`       | same process       |           ✅           | `"none"` |          ✅           |     ✅ (`close()` always notifies)     |
-| `transport/post-message`   | `postMessage` port |           ✅           | `"none"` |          ❌           |      medium-dependent — see below      |
-| `transport/worker-threads` | node worker thread |           ✅           | `"none"` |          ❌           |   ✅ (`"exit"`/`"error"`/`"close"`)    |
-| `transport/process`        | node child process | ✅ (with `"advanced"`) | `"none"` |          ❌           | ✅ (`"exit"`/`"disconnect"`/`"error"`) |
-| `transport/websocket`      | network (`ws`)     |           ❌           | `"json"` |          ❌           |    ✅ (socket `"close"`/`"error"`)     |
+| `transport/post-message`   | `postMessage` port |           ✅           | `"none"` |          ✅           |      medium-dependent — see below      |
+| `transport/worker-threads` | node worker thread |           ✅           | `"none"` |          ✅           |   ✅ (`"exit"`/`"error"`/`"close"`)    |
+| `transport/process`        | node child process | ✅ (with `"advanced"`) | `"none"` |          ✅           | ✅ (`"exit"`/`"disconnect"`/`"error"`) |
+| `transport/websocket`      | network (`ws`)     |           ❌           | `"json"` |          ✅           |    ✅ (socket `"close"`/`"error"`)     |
 
 `structuredClone: true` means the medium clones the frame for you (`Date`/`Map`/`Set`/etc. survive); `codec: "json"` means the transport encodes/decodes the frame itself, and only plain-JSON-safe values survive intact. See [`capabilities.codec` degradation notes](#the-websocket-json-codec) below for what that costs.
 
 A pending call never actually hangs on a transport with no death detection — it still settles on its `budgetMs`. Death detection just makes that settlement immediate instead of budget-bound.
+
+### Create the channel before you `await` anything
+
+`buffersUntilHandler: true` means every built-in transport queues a frame that arrives after `createChannel()` but before `grow()`/`serve()` registers its handler, and replays it once they do. So this is safe — the far side's `surface` frame is held while the host boots:
+
+```javascript
+const worker = new Worker(new URL("./serve-worker.mjs", import.meta.url));
+const channel = createChannel(worker); // same tick as new Worker(...)
+const hostApi = await slothlet({ base: "./api" }); // the surface frame may arrive meanwhile — it's queued
+const link = await grow(hostApi, channel, { budgetMs: 5000 });
+```
+
+What no transport can recover is a message that reached the medium **before `createChannel()` attached a listener at all** — some media keep no queue of their own:
+
+| Medium                                             | Message arrives before any listener exists            |
+| -------------------------------------------------- | ----------------------------------------------------- |
+| node `worker_threads` `Worker` (parent side)       | **lost** — the `Worker` emits it to no one            |
+| `ws` socket (client or server-accepted)            | **lost** — `ws` emits it to no one                    |
+| node `MessagePort` (incl. a worker's `parentPort`) | queued by Node until a listener is attached           |
+| node `ChildProcess` IPC / a child's `process`      | held by Node until a `"message"` listener is attached |
+
+So call `createChannel(...)` in the **same tick** you create the worker or socket (or, for a server-accepted socket, synchronously inside the `"connection"` listener) — before any `await`. Otherwise a slow step between the two can outlast the far side's boot, the `surface` frame is gone, and `grow()` fails with `VINE_BUDGET` once `handshakeMs` elapses.
 
 ---
 
@@ -33,7 +55,7 @@ const serving = await serve(workerApi, far);
 const link = await grow(hostApi, near, { budgetMs: 5000 });
 ```
 
-Delivery is still asynchronous (`queueMicrotask`) — a synchronous loopback would let `send()` re-enter the caller's own stack, and would pass ordering guarantees a real boundary doesn't give for free. Frames sent before the peer registers a handler are **buffered**, not dropped (`buffersUntilHandler: true`) — the only built-in transport that makes that promise, because it's the only one with nowhere for a buffer to be lost.
+Delivery is still asynchronous (`queueMicrotask`) — a synchronous loopback would let `send()` re-enter the caller's own stack, and would pass ordering guarantees a real boundary doesn't give for free. Frames sent before the peer registers a handler are **buffered**, not dropped (`buffersUntilHandler: true`) — the same promise every built-in transport makes (see [Create the channel before you `await` anything](#create-the-channel-before-you-await-anything)).
 
 Use it for: tests, simulating a vine before wiring a real boundary, or composing two slothlet instances in the same process for reasons unrelated to isolation.
 
@@ -63,7 +85,7 @@ const link = await grow(hostApi, createChannel(worker, { deathEvents: ["error"] 
 
 `options.deathEvents` is unioned with the defaults (`"close"`, `"messageerror"`), never replaces them.
 
-`buffersUntilHandler: false` — the underlying listener attaches eagerly, but a frame arriving before `onMessage()` is called finds no inner handler and is dropped. `grow()`/`serve()` both register their receive handler synchronously, before the far side's asynchronously-delivered `surface` frame can arrive, so this doesn't lose anything in practice.
+`buffersUntilHandler: true` — the underlying listener attaches eagerly at `createChannel()`, and a frame arriving before `onMessage()` is called is queued and replayed in order once a handler is registered.
 
 ---
 
@@ -78,7 +100,8 @@ import { createChannel } from "@cldmv/slothlet-vine/transport/worker-threads";
 import { grow } from "@cldmv/slothlet-vine";
 
 const worker = new Worker(new URL("./serve-worker.mjs", import.meta.url));
-const link = await grow(hostApi, createChannel(worker), { budgetMs: 5000 });
+const channel = createChannel(worker); // same tick as new Worker(...) — before any await
+const link = await grow(hostApi, channel, { budgetMs: 5000 });
 ```
 
 ```javascript
@@ -91,7 +114,7 @@ const api = await slothlet({ base: SERVE_DIR });
 await serve(api, createParentChannel());
 ```
 
-- **Parent** (`createChannel(worker)`) — `onClose` fires on the worker's real `"exit"` (any code) or `"error"`, so a dead thread force-settles every in-flight call immediately rather than waiting out a budget. `close()` detaches listeners but **never terminates the worker** — whoever created it owns its lifecycle.
+- **Parent** (`createChannel(worker)`) — call it in the same tick as `new Worker(...)`: a `Worker` drops any message it receives while it has no `"message"` listener, and `createChannel(worker)` is what attaches one. From then on, frames are queued until `grow()` registers its handler. `onClose` fires on the worker's real `"exit"` (any code) or `"error"`, so a dead thread force-settles every in-flight call immediately rather than waiting out a budget. `close()` detaches listeners but **never terminates the worker** — whoever created it owns its lifecycle.
 - **Child** (`createParentChannel()`, defaulting to the ambient `parentPort`) — `onClose` fires on the port's `"close"`. `close()` **does** close the wrapped port, because inside a worker the port _is_ the transport.
 
 That asymmetry is deliberate, not a bug: only the side that owns the underlying resource tears it down on `close()`. See [CUSTOM-TRANSPORTS.md](CUSTOM-TRANSPORTS.md) if you're writing a transport with a similar two-endpoint shape.
@@ -145,7 +168,8 @@ import { serve } from "@cldmv/slothlet-vine";
 
 const wss = new WebSocketServer({ port: 0 });
 wss.on("connection", async (socket) => {
-	await serve(api, createChannel(socket), { paths: ["exts"] });
+	const channel = createChannel(socket); // wrap synchronously, before any await
+	await serve(api, channel, { paths: ["exts"] });
 });
 ```
 
@@ -171,6 +195,8 @@ Frames cross as `JSON.stringify(frame)` / `JSON.parse`. That's faithful for the 
 - `TypedArray` / `ArrayBuffer` / `Buffer` — a plain object of indices, not the buffer.
 
 Those are lossy-but-**valid** degradations — the frame still crosses. A `BigInt` is different: it **throws** in `JSON.stringify`, so the codec can't encode the frame at all. That's a per-call refusal (`VINE_BAD_FRAME`), not a dead link — everything else in flight stays fine. If you need `Date`/`Map`/`Set` fidelity, use a structured-clone transport (the `post-message` family) instead.
+
+**Receive-before-handler** is queued: a message decoded after `createChannel(socket)` but before `onMessage()` is replayed once a handler is registered. A message that reached the socket before `createChannel(socket)` ran is lost — `ws` keeps no queue — so wrap a socket the moment you have it.
 
 **Send-before-`OPEN`** is buffered and flushed on `open` (a client socket connects asynchronously, so `send()` may run before the socket is ready). A send on a `CLOSING`/`CLOSED` socket is a silent no-op. `close()` closes the underlying socket — the one built-in transport where `close()` doesn't merely detach listeners, because a `ws` socket is 1:1 with its channel and the conformance suite's "closing one end fires the other's `onClose`" case is only observable over a real socket if `close()` actually closes it.
 

@@ -43,6 +43,7 @@
  * parent owns the connection, and the parent already learns of the child's exit on its own `exit`
  * event, so the child need not disconnect itself.
  */
+import { createInbox } from "../lib/inbox.mjs";
 
 /**
  * Wrap a forked `ChildProcess` (parent side of the boundary). Send/receive ride the child's IPC
@@ -110,10 +111,12 @@ export function createParentChannel(proc = process) {
  * disconnects a still-connected child on close; the child watches `disconnect` and leaves the channel
  * to the parent (see the ownership note in the module header).
  *
- * The receive listener is attached NOW, at construction, not lazily in `onMessage`. On the parent that
- * is immediately after `fork()`, before the child can emit anything, so no early frame is lost to a
- * missing listener; frames that nonetheless arrive before `onMessage` registers a handler are dropped
- * (`buffersUntilHandler: false`) rather than queued.
+ * The receive listener is attached NOW, at construction, not lazily in `onMessage`, and frames that
+ * arrive before `onMessage` registers a handler are QUEUED and replayed in order once it does
+ * (`buffersUntilHandler: true`, see `src/lib/inbox.mjs`) — so a consumer may create the channel,
+ * `await` something, and only then call `grow()` without losing the child's `surface` frame
+ * (CLDMV/slothlet-vine#41). (Node itself holds a `ChildProcess`'s IPC messages until a `"message"`
+ * listener exists, so nothing is lost before construction either.)
  *
  * @param {object} target - A `ChildProcess` (parent) or `process` (child).
  * @param {"parent"|"child"} side - Which end this is.
@@ -122,8 +125,8 @@ export function createParentChannel(proc = process) {
 function makeEndpoint(target, side) {
 	const isParent = side === "parent";
 
-	/** @type {((message: object) => void)|null} */
-	let handler = null;
+	/** Queues frames that arrive before a receive handler is registered, then replays them in order. */
+	const inbox = createInbox();
 	/** @type {((info?: object) => void)|null} */
 	let onCloseHandler = null;
 	let closed = false;
@@ -147,19 +150,15 @@ function makeEndpoint(target, side) {
 	}
 
 	/**
-	 * Dispatch one inbound frame to the registered handler. Frames arriving before a handler exists, or
-	 * after a local `close()`, are dropped — the core tolerates a dropped post-close frame, and this
-	 * transport declares it does not buffer pre-handler.
+	 * Hand one inbound frame to the inbox, which delivers it to the registered handler (insulated from
+	 * anything it throws) or queues it until one is registered. A frame arriving after a local
+	 * `close()` is dropped (the inbox is closed with the channel) — the core tolerates a dropped
+	 * post-close frame.
 	 * @param {object} message - The frame.
 	 * @returns {void}
 	 */
 	function onMessageListener(message) {
-		if (closed || typeof handler !== "function") return;
-		try {
-			handler(message);
-		} catch {
-			// Channel contract: handlers never throw into the transport.
-		}
+		inbox.deliver(message);
 	}
 
 	/** @returns {void} */
@@ -218,7 +217,7 @@ function makeEndpoint(target, side) {
 	}
 
 	return {
-		capabilities: { structuredClone: true, codec: "none", buffersUntilHandler: false },
+		capabilities: { structuredClone: true, codec: "none", buffersUntilHandler: true },
 
 		/**
 		 * Hand one frame to the IPC channel. A `child.send` failure has TWO distinct causes and this
@@ -266,12 +265,14 @@ function makeEndpoint(target, side) {
 		},
 
 		/**
-		 * Register the (single) receive handler; a later registration replaces the earlier one.
+		 * Register the (single) receive handler; a later registration replaces the earlier one. Frames
+		 * that arrived while no handler was registered are replayed to it, in order, on the next
+		 * microtask.
 		 * @param {(message: object) => void} fn - The receive handler.
 		 * @returns {void}
 		 */
 		onMessage(fn) {
-			handler = typeof fn === "function" ? fn : null;
+			inbox.setHandler(fn);
 		},
 
 		/**
@@ -296,7 +297,7 @@ function makeEndpoint(target, side) {
 		close() {
 			if (closed) return;
 			closed = true;
-			handler = null;
+			inbox.close();
 			onCloseHandler = null;
 			detach();
 			if (isParent) {

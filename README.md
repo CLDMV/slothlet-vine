@@ -99,7 +99,7 @@ await link.close(); // stubs unmounted; in-flight calls settle VINE_CLOSED
 serving.close();
 ```
 
-Swap `transport/loopback` for any of the other four built-in transports, or your own `Channel` implementation, without changing anything above `createPair()`/`connect()`. Single-word leaves, context carried by the namespace — never `growVine()`-style camelCase that repeats the package's own name.
+Swap `transport/loopback` for any of the other four built-in transports, or your own `Channel` implementation, without changing anything above `createPair()`/`connect()`. With a real boundary, create the channel in the **same tick** as the worker, child or socket it wraps — before any `await` — so the far side's one-shot `surface` frame always has a listener to land on; after that, the transport queues it until `grow()` is ready (see [Transports → Create the channel before you `await` anything](https://github.com/CLDMV/slothlet-vine/blob/master/docs/TRANSPORTS.md#create-the-channel-before-you-await-anything)). Single-word leaves, context carried by the namespace — never `growVine()`-style camelCase that repeats the package's own name.
 
 ---
 

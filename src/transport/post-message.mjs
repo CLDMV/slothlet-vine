@@ -20,17 +20,18 @@
  *
  * Two properties are deliberate and declared:
  *
- * - **`buffersUntilHandler: false`.** The underlying `message` listener is attached EAGERLY at
- *   {@link createChannel} time and dispatches to a nullable inner handler; a frame that arrives
- *   before `onMessage()` has been called finds no inner handler and is dropped. (Attaching the
- *   listener lazily instead would let the port's own pre-listener buffer replay those frames — a
- *   `worker_threads` MessagePort does buffer — which would be a different, undeclared contract. The
- *   eager-with-null-dispatch shape is what makes the `false` honest.) The core's `grow()` registers
- *   its receive handler synchronously before the far side's asynchronously-delivered `surface` frame
- *   can arrive, so nothing is lost in practice.
+ * - **`buffersUntilHandler: true`.** The underlying `message` listener is attached EAGERLY at
+ *   {@link createChannel} time, and a frame that arrives before `onMessage()` has been called is
+ *   QUEUED and replayed, in order, once a handler is registered (see `src/lib/inbox.mjs`). A
+ *   consumer may therefore create the channel, `await` something, and only then call `grow()`
+ *   without losing the far side's one-shot `surface` frame (CLDMV/slothlet-vine#41). Frames that
+ *   reach the port before `createChannel()` attaches its listener are the medium's business, not
+ *   this module's: a node `MessagePort` queues them until a listener starts it, but not every medium
+ *   does — so create the channel in the same tick as the port or worker it wraps, before any `await`.
  * - **Death detection is only what the port surface actually delivers**, and it varies by medium —
  *   see {@link createChannel}. We never fake a signal we cannot observe.
  */
+import { createInbox } from "../lib/inbox.mjs";
 
 /** The close-signalling events wired by default. Extra ones (e.g. `"exit"`, `"error"`) are opt-in. @type {string[]} */
 const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
@@ -105,8 +106,8 @@ export function createChannel(port, options = {}) {
 
 	/** @type {boolean} Once true, every dispatcher is inert and `send` is a no-op. */
 	let closed = false;
-	/** @type {((message: object) => void)|null} The single receive handler (last write wins). */
-	let messageHandler = null;
+	/** Queues frames that arrive before a receive handler is registered, then replays them in order. */
+	const inbox = createInbox();
 	/** @type {((info?: object) => void)|null} The single close handler (last write wins). */
 	let closeHandler = null;
 	/** @type {boolean} `onClose` fires at most once, even if several death events arrive. */
@@ -115,21 +116,15 @@ export function createChannel(port, options = {}) {
 	const attached = [];
 
 	/**
-	 * Receive one message event: unwrap `event.data` and hand it to the current inner handler, with
-	 * the port insulated from anything that handler throws.
+	 * Receive one message event: unwrap `event.data` and hand it to the inbox, which delivers it to
+	 * the current receive handler (insulated from anything that handler throws) or queues it until one
+	 * is registered.
 	 * @param {{ data?: object }} event - The message event (or, defensively, a raw frame).
 	 * @returns {void}
 	 */
 	function onMessageEvent(event) {
 		if (closed) return;
-		const handler = messageHandler;
-		if (typeof handler !== "function") return;
-		const data = event !== null && typeof event === "object" && "data" in event ? event.data : event;
-		try {
-			handler(data);
-		} catch {
-			// Contract: a consumer handler must never surface as a transport fault.
-		}
+		inbox.deliver(event !== null && typeof event === "object" && "data" in event ? event.data : event);
 	}
 
 	/**
@@ -170,8 +165,8 @@ export function createChannel(port, options = {}) {
 	}
 
 	return {
-		/** Structured-clone medium, no codec of our own, and no pre-handler buffering. */
-		capabilities: { structuredClone: true, codec: "none", buffersUntilHandler: false },
+		/** Structured-clone medium, no codec of our own; frames received before a handler are queued and replayed. */
+		capabilities: { structuredClone: true, codec: "none", buffersUntilHandler: true },
 
 		/**
 		 * Post one frame to the far side. The object crosses by structured clone — passed straight to
@@ -199,13 +194,13 @@ export function createChannel(port, options = {}) {
 
 		/**
 		 * Register the (single) receive handler; a second registration replaces the first. A
-		 * non-function clears it. Frames that arrived before the first registration were dropped
-		 * (`buffersUntilHandler: false`), not queued.
+		 * non-function clears it. Frames that arrived while no handler was registered are replayed to
+		 * it, in order, on the next microtask (`buffersUntilHandler: true`).
 		 * @param {(message: object) => void} handler - The receive handler.
 		 * @returns {void}
 		 */
 		onMessage(handler) {
-			messageHandler = typeof handler === "function" ? handler : null;
+			inbox.setHandler(handler);
 		},
 
 		/**
@@ -229,7 +224,7 @@ export function createChannel(port, options = {}) {
 		close() {
 			if (closed) return;
 			closed = true;
-			messageHandler = null;
+			inbox.close();
 			closeHandler = null;
 			if (useAddEventListener) {
 				for (const [event, listener] of attached) {
