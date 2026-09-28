@@ -14,7 +14,8 @@ const serving = await serve(api, channel, {
 	paths: ["exts"], // dotted prefixes to serve; omit for every callable leaf of the base load
 	modules: ["ext-1"], // extra moduleIDs to union in (runtime add() mounts leaves() alone can't see)
 	budgetMs: 30_000, // accepted, IGNORED in v1 — documented for symmetry with grow()
-	principal: { path: "remote.renderer", context: { actor } } // OPTIONAL — the channel principal for an untrusted peer
+	principal: { path: "remote.renderer", context: { actor } }, // OPTIONAL — the channel principal for an untrusted peer
+	around: ({ callId, path, args, principal, invoke }) => invoke() // OPTIONAL — the host's own scope around each accepted call
 });
 // serving: { leaves: string[], excluded: string[], principal: object|Function|null, close(): void }
 
@@ -73,7 +74,7 @@ The **channel principal**: the caller identity this serve binds to the channel, 
 - An **object** is `{ path, context? }`. `path` must pass the same path guard as a leaf (no `**`, no empty segment, not under `slothlet`); `context`, when given, must be a plain object (it is deep-cloned per scope, and only plain data gets full-depth write protection).
 - A **function** is called synchronously per frame and must answer either form — so a host can rotate identity on re-auth without re-serving. A throw or any other answer denies that one frame (`VINE_DENIED` for a call, a `deny` ack for a subscription). It is deliberately not async: transport auth happens at the handshake.
 
-`serve()` throws a `TypeError` — before publishing anything — when the principal is malformed, when the instance's permission system is not enforcing (`api.slothlet.permissions.control.enabled !== true`), when `api.slothlet.event.resolveLevel` is missing, when `api.slothlet.permissions.global.checkCall` is missing (**the call half requires the slothlet release carrying [CLDMV/slothlet#508](https://github.com/CLDMV/slothlet/issues/508)**), or when `api.slothlet.context.scope` does not work (a `scope: false` instance). A principal on an instance that cannot enforce it would gate nothing, so it is refused rather than degraded. A principal-bearing serve must run on the async (Node) runtime, not `runtime: "live"`.
+`serve()` throws a `TypeError` — before publishing anything — when `around` is given and is not a function, when the principal is malformed, when the instance's permission system is not enforcing (`api.slothlet.permissions.control.enabled !== true`), when `api.slothlet.event.resolveLevel` is missing, when `api.slothlet.permissions.global.checkCall` is missing (**the call half requires the slothlet release carrying [CLDMV/slothlet#508](https://github.com/CLDMV/slothlet/issues/508)**), or when `api.slothlet.context.scope` does not work (a `scope: false` instance). A principal on an instance that cannot enforce it would gate nothing, so it is refused rather than degraded. A principal-bearing serve must run on the async (Node) runtime, not `runtime: "live"`.
 
 ```javascript
 wss.on("connection", async (socket, request) => {
@@ -86,6 +87,40 @@ wss.on("connection", async (socket, request) => {
 ```
 
 The full model — what a principal is and is not, the rule shapes, and the worked call and subscription tables — is in [PERMISSIONS.md → Serving to an untrusted peer](PERMISSIONS.md#serving-to-an-untrusted-peer-the-channel-principal).
+
+### `around`
+
+**Type:** `({ callId, path, args, principal, invoke }) => unknown` **Default:** none
+
+A per-call wrapper for the host's own scope around each call the vine has accepted: a transaction, a deadline, an audit record. It runs after every check the vine makes — the served-surface check (`VINE_NO_LEAF`), the principal gate (`VINE_DENIED`, inside the principal's context scope), and the args data-only check (`VINE_DATA_ONLY`) — so it never sees a frame the vine would have refused. Identity is not established here: that is [`principal`](#principal)'s job, and `around` decorates a call that is already authorized.
+
+| Field       | Meaning                                                                                                                                                                                                                                                                                                                |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `callId`    | The call's correlation id, as the grow side sent it — for tracing and deadlines.                                                                                                                                                                                                                                       |
+| `path`      | The served leaf path.                                                                                                                                                                                                                                                                                                  |
+| `args`      | A private copy of the call's arguments, for inspection. Changing it changes nothing `invoke()` passes.                                                                                                                                                                                                                 |
+| `principal` | The frozen `{ path, context? }` resolved for **this** frame (a function-form principal is resolved per frame), or `null` on a serve without a principal.                                                                                                                                                               |
+| `invoke`    | `() => Promise<unknown>` — runs the gated leaf with the call's original arguments. It takes no arguments (the call that was authorized is the call that runs) and may be called more than once; each call gets a fresh copy of the arguments as they arrived, so a retry never sees what a failed attempt did to them. |
+
+Whatever `around` returns is the call's result — the data-only return check applies to it exactly as to a leaf's own value, so a wrapper that returns a function is refused `VINE_DATA_ONLY`. Whatever it throws is the call's error, and reaches the grow side as a `VineRemoteError` carrying that error's own name, message and code. `around` may also answer without calling `invoke()` at all (a cached answer). With `around` set, a call's arguments must be structured-cloneable — they already must be to cross any real transport — and ones that are not answer `VINE_DATA_ONLY`.
+
+```javascript
+await serve(api, channel, {
+	principal: { path: "remote.renderer", context: { actor } },
+	around: async ({ callId, path, principal, invoke }) => {
+		// Retry the leaf on a write conflict, as one atomic action under the bound actor.
+		for (;;) {
+			try {
+				return await db.transaction(() => invoke());
+			} catch (err) {
+				if (!isWriteConflict(err)) throw err;
+			}
+		}
+	}
+});
+```
+
+`around` wraps calls only. Accepting a far subscription and forwarding an emit are not actions a host can make atomic or roll back, and per-subscriber policy is what conditional event rules and the principal's context are for.
 
 ---
 
