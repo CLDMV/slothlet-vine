@@ -169,15 +169,16 @@ afterEach(async () => {
  * Stand up a full vine over a REAL worker thread: boot a grow instance on the main thread, THEN spawn
  * the serve worker, and link them with the worker-threads transport.
  *
- * Ordering is load-bearing here, not incidental. The transport declares `buffersUntilHandler: false`
- * (see the header of `src/transport/worker-threads.mjs`): it drops any frame — including the worker's
- * one-shot `surface` frame — that arrives before `grow()` registers its receive handler via
- * `channel.onMessage()`. `createChannel(worker)`/`grow()` run synchronously back-to-back once called,
- * so the only way to lose the race is to `await` something (the grow-side boot) AFTER the worker is
- * already spawned and running. Booting `growApi` FIRST, then spawning the worker, keeps that gap to
- * plain scheduling overhead — no user-level await sits between "the worker starts running" and "the
- * handler is registered". See the regression tests below for the failure this avoids and proof the
- * ordering matters.
+ * Ordering is load-bearing here, not incidental — but the constraint is Node's, not the transport's.
+ * A `worker_threads.Worker` emits each message the worker posts as a `"message"` event, and a message
+ * emitted while the `Worker` has no `"message"` listener is gone (see the header of
+ * `src/transport/worker-threads.mjs`). `createChannel(worker)` is what attaches the listener; from
+ * then on the transport queues any frame that arrives before `grow()` registers its handler
+ * (`buffersUntilHandler: true`, CLDMV/slothlet-vine#41). So the only way to lose the worker's
+ * one-shot `surface` frame is to `await` something (the grow-side boot) AFTER the worker is spawned
+ * but BEFORE `createChannel(worker)` runs. `createChannel(worker)` follows `new Worker(...)` in the
+ * same tick here, which closes that gap entirely. See the regression tests below for the failure this
+ * avoids and proof the ordering matters.
  * @param {object} [options]
  * @param {object} [options.permissions] - Permission config for the GROW-side instance.
  * @param {object} [options.growOptions] - Options forwarded to `grow()`.
@@ -214,11 +215,18 @@ async function wire({ permissions, growOptions, serveOptions, base, bootDelayMs 
 
 /**
  * REGRESSION FIXTURE — intentionally reproduces the PRE-FIX `wire()` ordering: spawn the worker, THEN
- * await the grow-side boot, and only THEN attach the channel (which is where `grow()` registers the
- * receive handler). Kept here, isolated from `wire()` itself, solely to prove the race the reordering
- * above closes — it must never be "fixed" to match `wire()`.
- * @param {number} bootDelayMs - Extra delay awaited before the grow-side boot, making the race
- *   deterministic instead of depending on real machine timing.
+ * await the grow-side boot, and only THEN attach the channel (which is where the transport attaches
+ * its `"message"` listener to the `Worker`, and `grow()` registers the receive handler). Kept here,
+ * isolated from `wire()` itself, solely to prove the race the reordering above closes — it must never
+ * be "fixed" to match `wire()`.
+ *
+ * A fixed delay alone does not make the race deterministic: on a heavily loaded machine the worker's
+ * own boot can outlast the delay, the surface frame then lands after `createChannel(worker)`, and
+ * the repro "passes" by accident. So the fixture also waits until the `Worker` has actually emitted
+ * the `surface` message while it had NO `"message"` listener — observed through a spy on
+ * `worker.emit`, since attaching a listener to watch for it would be the very thing that prevents
+ * the loss.
+ * @param {number} bootDelayMs - Extra delay awaited before the grow-side boot.
  * @returns {Promise<{worker: import("node:worker_threads").Worker, growApi: object, link: object, channel: object}>} The wired pair.
  */
 async function wireOldOrderingRepro(bootDelayMs) {
@@ -226,8 +234,15 @@ async function wireOldOrderingRepro(bootDelayMs) {
 	teardown.push(async () => {
 		await worker.terminate();
 	});
+	const surfaceEmittedUnheard = new Promise((resolve) => {
+		const emit = worker.emit.bind(worker);
+		worker.emit = (event, ...args) => {
+			if (event === "message" && args[0]?.type === "surface" && worker.listenerCount("message") === 0) resolve();
+			return emit(event, ...args);
+		};
+	});
 
-	await new Promise((resolve) => setTimeout(resolve, bootDelayMs));
+	await Promise.all([surfaceEmittedUnheard, new Promise((resolve) => setTimeout(resolve, bootDelayMs))]);
 	const growApi = await slothlet({ base: GROW_DIR, silent: true });
 	teardown.push(async () => {
 		await growApi.slothlet?.shutdown?.();
@@ -427,9 +442,10 @@ describe("e2e over worker_threads — point 6: link.close() unmounts and settles
 });
 
 describe("e2e over worker_threads — regression: attach the channel before anything is awaited after spawning the worker", () => {
-	// The transport drops any frame that arrives before grow() registers its handler
-	// (`buffersUntilHandler: false`, src/transport/worker-threads.mjs). A slow grow-side boot AFTER the
-	// worker is already spawned widens that drop window past the worker posting its `surface` frame.
+	// A Worker drops any message it emits before a "message" listener is attached — and the listener is
+	// attached by createChannel(worker). A slow grow-side boot AFTER the worker is spawned but BEFORE
+	// createChannel(worker) widens that window past the worker posting its `surface` frame. (Once the
+	// channel exists, the transport queues early frames — see tests/early-frames.test.vitest.mjs.)
 	// BOOT_DELAY_MS only has to outlast how quickly the worker fixture posts `surface` after spawning —
 	// comfortably true here even under load, since the worker still has to load its own module graph
 	// and boot its own slothlet instance before it can serve.

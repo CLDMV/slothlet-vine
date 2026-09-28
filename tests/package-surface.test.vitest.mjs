@@ -90,7 +90,7 @@ describe("unimplemented transports still fail loudly (pre-release contract)", ()
 		const { port1 } = new MessageChannel();
 		const channel = createParentChannel(port1);
 		expect(typeof channel.send).toBe("function");
-		expect(channel.capabilities).toEqual({ structuredClone: true, codec: "none", buffersUntilHandler: false });
+		expect(channel.capabilities).toEqual({ structuredClone: true, codec: "none", buffersUntilHandler: true });
 		channel.close();
 	});
 
@@ -108,7 +108,7 @@ describe("unimplemented transports still fail loudly (pre-release contract)", ()
 		};
 		const channel = createChannel(socket);
 		expect(typeof channel.send).toBe("function");
-		expect(channel.capabilities).toEqual({ structuredClone: false, codec: "json", buffersUntilHandler: false });
+		expect(channel.capabilities).toEqual({ structuredClone: false, codec: "json", buffersUntilHandler: true });
 		channel.close();
 	});
 });
