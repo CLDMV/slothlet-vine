@@ -33,6 +33,12 @@ export const CODES = Object.freeze({
 	/** A call named a path that is not in the served surface (re-validated serve-side every call). */
 	NO_LEAF: "VINE_NO_LEAF",
 	/**
+	 * The serving side's channel principal is not permitted to call this path — slothlet's rules said
+	 * no (or could not be asked), and the leaf was never invoked. Produced ONLY by a `serve()` that
+	 * bound a `principal`; a trusted-transport serve (no principal) never answers it.
+	 */
+	DENIED: "VINE_DENIED",
+	/**
 	 * `.code` for a remote application error that carried none of its own — and for one whose code
 	 * was in the reserved `VINE_*` namespace, which is never adopted from the wire (the far side's
 	 * spelling is kept on `.remoteCode`). See {@link VineRemoteError}.
