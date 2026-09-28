@@ -126,6 +126,29 @@ Cross-cutting rules, consistent with the call path:
 - **Enforcement is on the emitting side; the untrusted-boundary case is v1's open question.** The level is resolved and the payload cut where the event originates, against that instance's rules — so a `notify` subscriber's payload never leaves the emitter. What is out of scope for v1 is authenticating a subscriber's identity across an **untrusted** boundary — a browser that could forge `subscriberPath` to claim a higher level (CLDMV/slothlet-vine#33). That is a transport concern, orthogonal to direction: like the rest of the vine's v1 security model, the boundary is assumed to be one you established (a worker you spawned, a socket you authenticated), and a transport facing an untrusted network must establish identity at its own layer.
 - **Graceful degradation.** An end without `resolveLevel` (slothlet < 3.18.0) refuses every incoming `sub` with a catchable `deny` rather than forwarding ungated — the vine never carries a payload it cannot gate. An end without `api.slothlet.caller()` throws a clear `TypeError` from `event.on`. On 3.18.0 the primitives are _present_ (so these guards pass) but the cross-instance caller bug silently drops same-process deliveries — hence the ≥ 3.18.1 floor above for a shared-process transport; a real cross-process boundary is unaffected.
 
+### Event volume (no backpressure in v1)
+
+Forwarded events are fire-and-forget. Each emit that clears a subscriber's resolved level is sent as one `event` frame the moment it fires (see `accept`'s host listener in `src/lib/events.mjs`) — there is no vine-level rate cap, queue, coalescing, or backpressure signal from a slow far side back to the emitter. A call's `budgetMs` bounds how long a caller waits for a _result_; forwarded events have nothing equivalent beyond the one-time subscribe handshake's own budget (the `sub-ack`). A high-frequency emitter can flood a slow transport, and a slow subscriber on the far side has no channel-level way to ask the emitter to slow down.
+
+Volume control belongs in the emitter — throttle, debounce, or coalesce before emitting, the same way you would for any other high-frequency event source:
+
+```javascript
+// At most one forwarded "pointer.move" per 50 ms; intermediate positions are dropped.
+let last = 0;
+function emitPointerMove(x, y) {
+	const now = Date.now();
+	if (now - last < 50) return;
+	last = now;
+	void api.slothlet.event.emit("pointer.move", { x, y });
+}
+```
+
+or in the transport — its own buffering or limits, e.g. checking a WebSocket's `bufferedAmount` before writing more, or watching a worker's own message-queue depth.
+
+Any limit added this way must only ever _reduce_ what crosses the boundary, never widen it past what the subscriber's resolved level already allows — the same confidentiality rule the rest of event forwarding runs on: a throttled or coalesced emit may drop to nothing or to trigger-only, but it may never smuggle a payload past a `notify`/`deny` subscriber.
+
+This is independent of [subscriber identity](https://github.com/CLDMV/slothlet-vine/issues/33) — that tracks _who_ is asking to subscribe; this note is about _how much_ crosses once a subscription is granted.
+
 ## Built-in transports (each: one self-contained module + e2e test)
 
 See [TRANSPORTS.md](TRANSPORTS.md) for a usage guide, code examples, and the ownership/death-detection details that differ between the two-endpoint transports (`worker-threads`, `process`) — referenced from the conformance harness note below.
@@ -210,6 +233,7 @@ Serve also re-checks **arguments**, as a backstop, for the identical reason: the
 - **No serve-side concurrency cap.** A peer may have any number of calls in flight; each one invokes a real leaf. The boundary is assumed to be one you established (a worker you spawned, a process you forked, a socket you authenticated at the transport layer), not an open port. A hostile peer on such a channel can exhaust the serving side by volume alone.
 - **No grow-side surface-size cap.** A `surface` frame may name any number of leaves and each one becomes a mount. The path guard bounds what a leaf may be _called_, not how many arrive.
 - Both are non-goals for v1 rather than oversights; a transport that faces an untrusted network should apply its own limits before the frames reach the vine.
+- **No event-volume control.** Forwarded events have no rate cap, queue, coalescing, or backpressure signal beyond the one-time subscribe handshake's `budgetMs` — each emit that clears a subscriber's level is sent as one `event` frame immediately; see [Event volume](#event-volume-no-backpressure-in-v1) above. Also a non-goal for v1: volume control belongs in the emitter or the transport, not the vine core.
 
 ## Non-goals (v1)
 
