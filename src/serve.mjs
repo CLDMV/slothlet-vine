@@ -75,6 +75,20 @@ import { assertPrincipalSupport, bindPrincipal, gate } from "./lib/principal.mjs
  *   `api.slothlet.permissions.global.checkCall` (the slothlet release carrying CLDMV/slothlet#508) —
  *   each checked here, fail-closed, as a `TypeError`. Omit it for a trusted transport (a worker you
  *   spawned, a process you forked): nothing changes, byte for byte. See `docs/PERMISSIONS.md`.
+ * @param {(call: { callId: string, path: string, args: unknown[], principal: Readonly<{ path: string, context?: object }>|null, invoke: () => Promise<unknown> }) => unknown} [options.around] -
+ *   A per-call wrapper (#51) for the host's own scope around each ACCEPTED call: a transaction, a
+ *   deadline, an audit record. It runs after every check the vine makes — the served-surface check,
+ *   the principal gate (inside the principal's context scope), and the args data-only check — so it
+ *   never sees a frame the vine would have refused. `invoke()` runs the gated leaf with the frame's
+ *   arguments; it takes no arguments of its own (the call that was authorized is the call that runs)
+ *   and may be called more than once (a transaction retried on a write conflict), each time with a
+ *   fresh copy of the original arguments. `args` is a private copy for inspection — changing it
+ *   changes nothing `invoke()` passes. `principal` is the principal resolved for THIS frame, or `null`
+ *   on a serve without one. Whatever `around` returns is the call's result (the data-only return
+ *   check applies to it, exactly as to a leaf's own value); whatever it throws is the call's error.
+ *   Identity is not established here — that is `principal`'s job; `around` decorates a call already
+ *   authorized. With `around` set, the call's arguments must be structured-cloneable (they already
+ *   must be to cross any real transport).
  * @returns {Promise<{ leaves: string[], excluded: string[], principal: object|Function|null, event: { on: Function, once: Function }, close: () => void }>}
  *   The live serving handle. `leaves` is what the far side is offered; `excluded` is every CALLABLE leaf that was
  *   dropped on the way there — refused by {@link isSafePath} or filtered out by `paths` — so a leaf
@@ -82,8 +96,9 @@ import { assertPrincipalSupport, bindPrincipal, gate } from "./lib/principal.mjs
  *   not "dropped": they were never candidates for a callable surface.) `principal` is the frozen,
  *   normalized `{ path, context? }` this serve bound (the resolver itself for the function form), or
  *   `null` when none was given.
- * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel — or, with a
- *   `principal`, when it is malformed or the instance cannot enforce it (see `options.principal`).
+ * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel, when
+ *   `around` is given and is not a function — or, with a `principal`, when it is malformed or the
+ *   instance cannot enforce it (see `options.principal`).
  *
  * @example
  * const serving = await serve(api, channel, { paths: ["exts"] });
@@ -105,6 +120,10 @@ export async function serve(api, channel, options = {}) {
 	// surface is read, so a serve that cannot enforce its principal never publishes anything.
 	const principal = bindPrincipal(options.principal, "serve");
 	if (principal) await assertPrincipalSupport(api, { calls: true, scope: true }, "serve");
+	const around = options.around ?? null;
+	if (around !== null && typeof around !== "function") {
+		throw new TypeError("@cldmv/slothlet-vine: serve() around must be a function when given");
+	}
 
 	const { leaves, excluded } = await collectLeaves(api, options);
 	const served = new Set(leaves);
@@ -153,7 +172,7 @@ export async function serve(api, channel, options = {}) {
 			// With a principal: resolve it, open its context scope, ask the rules engine, and only then
 			// run the ordinary pipeline — all inside the scope. Without one: the v1 trusted-transport
 			// pipeline, unchanged (no gate, no scope, host standing).
-			const value = principal ? await answerAs(path, args) : await execute(path, args);
+			const value = principal ? await answerAs(callId, path, args) : await execute(callId, path, args, null);
 			// Data-only cuts BOTH ways, and this is the half a grow side cannot enforce. Over a cloning
 			// transport a returned function fails as an opaque DataCloneError; over a by-reference one
 			// (loopback, same realm) it sails straight through and hands the caller a live closure over
@@ -175,18 +194,26 @@ export async function serve(api, channel, options = {}) {
 
 	/**
 	 * The per-call pipeline that runs once a call is ACCEPTED — after `NO_LEAF` and, with a principal,
-	 * after the gate and inside the principal's scope: the args data-only check, then the invocation.
+	 * after the gate and inside the principal's scope: the args data-only check, then the invocation,
+	 * wrapped by the host's `around` (#51) when one was given.
 	 *
-	 * EXTENSION POINT (#51 `around`): a host's per-call wrapper slots in here, between the args check
-	 * and `invoke` — `around ? around({ callId, path, args, principal, invoke: () => invoke(api, path, args) }) : invoke(api, path, args)`
-	 * — so it never sees a frame the vine would have refused, cannot widen what the rules allowed (it
-	 * runs AFTER the gate, and `invoke` is fixed to the gated path/args), and whatever it returns flows
-	 * into the return-value check in {@link answer} exactly like a leaf's own value.
+	 * `around` never sees a frame the vine would have refused, and it cannot widen what the rules
+	 * allowed: it runs AFTER the gate, and its `invoke()` is fixed to the gated path and to a private
+	 * snapshot of the gated arguments. The snapshot matters — the parsed frame's `args` is a fresh array
+	 * but its elements are shared, so handing `around` the very objects `invoke()` would pass would let
+	 * it (or a bug in it) mutate a nested argument after the rules engine judged it. So `around` gets
+	 * its own copy to inspect, and every `invoke()` gets a fresh copy of the pristine snapshot, which
+	 * also gives a retried invocation the arguments as they arrived rather than as a failed first
+	 * attempt left them. Whatever `around` returns flows into the return-value check in {@link answer}
+	 * exactly like a leaf's own value.
+	 * @param {string} callId - The call's correlation id (handed to `around`).
 	 * @param {string} path - The served leaf path.
 	 * @param {unknown[]} args - The call's arguments (the parsed frame's fresh copy).
-	 * @returns {Promise<unknown>} The leaf's resolved value.
+	 * @param {Readonly<{ path: string, context?: object }>|null} who - The principal resolved for this
+	 *   frame, or `null` on a serve without one (handed to `around`).
+	 * @returns {Promise<unknown>} The leaf's (or `around`'s) resolved value.
 	 */
-	async function execute(path, args) {
+	async function execute(callId, path, args, who) {
 		// The grow-side stub already refuses a function-bearing argument before it ever sends a
 		// frame (see grow.mjs), but that enforcement only covers frames built by a legitimate
 		// vineStub call. Nothing stops a frame constructed directly against the channel — possible
@@ -205,7 +232,15 @@ export async function serve(api, channel, options = {}) {
 				}
 			);
 		}
-		return await invoke(api, path, args);
+		if (around === null) return await invoke(api, path, args);
+		const snapshot = copyArgs(path, args);
+		return await around({
+			callId,
+			path,
+			args: copyArgs(path, snapshot),
+			principal: who,
+			invoke: () => invoke(api, path, copyArgs(path, snapshot))
+		});
 	}
 
 	/**
@@ -223,12 +258,13 @@ export async function serve(api, channel, options = {}) {
 	 * `Reflect.apply(leaf, …)` still enters the leaf without a slothlet gate of its own — which is
 	 * exactly why this gate sits in front of it — and once inside, the leaf's own `self.*` calls are
 	 * gated as the leaf's module, as for any host-initiated call.
+	 * @param {string} callId - The call's correlation id.
 	 * @param {string} path - The served leaf path.
 	 * @param {unknown[]} args - The call's arguments.
 	 * @returns {Promise<unknown>} The leaf's resolved value.
 	 * @throws {VineError} `VINE_DENIED` when the principal may not call `path` (or could not be judged).
 	 */
-	async function answerAs(path, args) {
+	async function answerAs(callId, path, args) {
 		const who = principal.resolve();
 		if (!who) throw denied(path, null);
 		const context = who.context ?? {};
@@ -241,7 +277,7 @@ export async function serve(api, channel, options = {}) {
 				fn: async () => {
 					try {
 						if (!(await gate(api, who, path, args))) throw denied(path, who);
-						outcome = { value: await execute(path, args) };
+						outcome = { value: await execute(callId, path, args, who) };
 					} catch (err) {
 						outcome = { err };
 					}
@@ -396,6 +432,28 @@ async function collectLeaves(api, options) {
 	// A path reachable through one module key and filtered out under another is SERVED — the union
 	// wins, and it is not also reported as excluded.
 	return { leaves: [...found].sort(), excluded: [...dropped].filter((path) => !found.has(path)).sort() };
+}
+
+/**
+ * A structured clone of a call's (already data-only-checked) arguments, for the `around` wrapper's
+ * private snapshot and views (see `execute()` in {@link serve}). Anything structured clone refuses —
+ * a Symbol, a WeakMap — is not data either, and answers `VINE_DATA_ONLY` rather than an opaque
+ * DataCloneError.
+ * @param {string} path - The leaf path, for the error.
+ * @param {unknown[]} args - Arguments to copy.
+ * @returns {unknown[]} A deep copy.
+ * @throws {VineError} `VINE_DATA_ONLY` when the arguments cannot be structured-cloned.
+ */
+function copyArgs(path, args) {
+	try {
+		return structuredClone(args);
+	} catch (err) {
+		throw new VineError(
+			CODES.DATA_ONLY,
+			`slothlet-vine: '${path}' was called with arguments that cannot be copied (${err?.message ?? String(err)}) — the vine is data-only`,
+			{ path }
+		);
+	}
 }
 
 /**
