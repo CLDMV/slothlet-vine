@@ -1,28 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/lib/frame.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The wire frames (`schemas/frame.schema.json` is normative) plus the two guards that stand between
- * a hostile or merely buggy far side and this process: {@link parseFrame}, which is TOTAL — it
- * returns a typed frame or `null` and never throws, whatever junk arrives — and {@link isSafePath},
- * which refuses dotted paths that would let a remote surface listing write through
- * `Object.prototype`.
- *
- * ## Why the path guard is not theoretical (probed against @cldmv/slothlet 3.14.0)
- *
- * `api.slothlet.api.add("__proto__.x", fn)` and `add("constructor.prototype.pwn", fn)` are both
- * ACCEPTED by slothlet, and both land the function on `Object.prototype` — `({}).x` becomes that
- * function process-wide. Since the leaf list in a `surface` frame comes from the FAR side, an
- * unguarded `grow` would hand a remote peer prototype pollution for free. Slothlet does guard its
- * own reserved roots (`slothlet` / `shutdown` / `destroy` are refused with
- * `INVALID_CONFIG_API_PATH_INVALID`), so the gap is exactly the prototype chain — which is what
- * {@link UNSAFE_SEGMENTS} closes.
- *
- * Reported upstream as CLDMV/slothlet#302 and being hardened in slothlet by CLDMV/slothlet#305, but
- * this guard STAYS regardless of the slothlet version: it validates UNTRUSTED remote surface paths
- * at vine's own boundary, which is vine's responsibility to enforce independent of what any
- * downstream `add()` does (and vine's peer floor spans slothlet versions that predate the fix).
  */
+
 import { toWire } from "./errors.mjs";
 
 /** The frame schema version carried on the `surface` frame. @type {number} */

@@ -1,10 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/conformance-loopback.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:15-07:00 (1790968815)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The loopback transport against the shared Channel conformance suite — the same suite every other
- * built-in transport, and any consumer-written one, has to pass.
  */
+
 import { describe, it, expect } from "vitest";
 import { createChannel, createPair } from "../src/transport/loopback.mjs";
 import { channelConformance } from "../src/testing/conformance.mjs";

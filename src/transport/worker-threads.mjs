@@ -1,42 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/transport/worker-threads.mjs
+ *	@Date: 2026-08-23T21:30:12-07:00 (1787545812)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:14-07:00 (1790968814)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The `node:worker_threads` transport — a Channel over the thread boundary, with REAL death
- * detection. It has two endpoints, one per side of the boundary:
- *
- * - **Parent side** — {@link createChannel}`(worker)` wraps a live `worker_threads.Worker`. Frames
- *   ride `worker.postMessage` / `worker.on("message")`, and `onClose` fires when the worker actually
- *   dies: `"exit"` (any code) or `"error"`. This is the transport's advantage over the browser
- *   `postMessage` family — a worker thread ending is a real, observable event, so a pending call is
- *   force-settled `VINE_GONE` the moment the thread is gone rather than hanging on its budget.
- * - **Child side** — {@link createParentChannel}`()` wraps `worker_threads.parentPort` (a
- *   `MessagePort`). It takes an optional port so two ports of a `worker_threads.MessageChannel` can
- *   be paired in-process for the conformance suite (a real structured-clone boundary, no second
- *   thread).
- *
- * Both sides declare `{ structuredClone: true, codec: "none", buffersUntilHandler: true }`:
- *
- * - **`structuredClone: true`, `codec: "none"`** — the medium structured-clones, so frames are
- *   handed to `postMessage` verbatim (never JSON). `Date` / `Map` / `Set` survive; only the
- *   documented data-only rule (no functions) bounds what may cross.
- * - **`buffersUntilHandler: true`** — this module attaches its OWN `"message"` listener eagerly (at
- *   construction), and any frame that arrives before the core registers its handler is QUEUED and
- *   replayed, in order, on `onMessage()` (see `src/lib/inbox.mjs`). A consumer may therefore create
- *   the channel, `await` something, and only then call `grow()` without losing the far side's
- *   one-shot `surface` frame (CLDMV/slothlet-vine#41).
- *
- * What this module CANNOT recover is a message that reached a `Worker` before `createChannel(worker)`
- * attached any listener at all: Node's `Worker` relays its internal port with `this.emit("message")`
- * from a listener Node itself attaches in the `Worker` constructor, so a message emitted while the
- * `Worker` has no `"message"` listener is simply gone. Call `createChannel(worker)` in the same tick
- * as `new Worker(...)` — before any `await`. (The child side has no such gap: `parentPort` is a
- * `MessagePort`, which queues messages until a listener starts it.)
- *
- * Ownership: {@link createChannel}`.close()` detaches its listeners but NEVER terminates the worker —
- * the caller made the worker and owns its lifecycle. {@link createParentChannel}`.close()` closes the
- * port it wraps, because there the port IS the transport.
  */
+
 import { parentPort as defaultParentPort } from "node:worker_threads";
 import { createInbox } from "../lib/inbox.mjs";
 

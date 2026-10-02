@@ -1,20 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-loopback-around.test.vitest.mjs
+ *	@Date: 2026-09-28T12:57:24-07:00 (1790625444)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:15-07:00 (1790968815)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * `serve()`'s per-call `around` wrapper (#51) with REAL slothlet instances on both ends of a loopback
- * vine: the host runs each accepted call inside its own scope, and the far side sees exactly what
- * `around` returned or threw.
- *
- * Two halves, gated like `e2e-loopback-principal.test.vitest.mjs`:
- *
- * - WITHOUT a principal, `around` needs nothing new from slothlet, so it runs here against whatever is
- *   installed: a host-established context the leaf reads, a retried transaction, a thrown error.
- * - WITH a principal, the serve needs `api.slothlet.permissions.global.checkCall` (CLDMV/slothlet#508),
- *   so that block is `describe.skipIf(!hasCheckCall)`, feature-detected on a real instance: `around`
- *   receives the channel principal, runs after the gate inside the principal's scope, and a denied
- *   call never reaches it.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

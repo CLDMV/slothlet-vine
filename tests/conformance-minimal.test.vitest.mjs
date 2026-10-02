@@ -1,19 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/conformance-minimal.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:15-07:00 (1790968815)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The shared Channel conformance suite against Channel shapes none of the five built-in transports use
- * (all five are fully symmetric and declare `close`/`onClose`/`capabilities` on both ends), so this is
- * the only place the suite's own "this channel doesn't support X" skip branches are ever actually
- * driven — and the only place the harness's OWN promise to tolerate a partial implementation is
- * verified rather than assumed. `docs/DESIGN.md` makes `close`, `onClose` and `capabilities` all
- * independently optional on the Channel contract; a consumer-written transport is free to omit
- * whichever it cannot support.
- *
- * Two shapes:
- * - **minimal** — `send` + `onMessage` only, nothing else at all.
- * - **asymmetric** — both ends support `close()`, but only ONE side supports `onClose`.
  */
+
 import { describe, it, expect } from "vitest";
 import { channelConformance } from "../src/testing/conformance.mjs";
 

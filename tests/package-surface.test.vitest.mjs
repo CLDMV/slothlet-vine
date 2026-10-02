@@ -1,13 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/package-surface.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:22-07:00 (1790968822)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The package's published surface: every documented entry point resolves, the frame schema matches
- * the protocol the code implements, and the transports that are still scaffolds fail LOUDLY — never
- * a silent no-op a consumer could mistake for working forwarding.
- *
- * `transport/loopback` is implemented and is asserted the other way: it must NOT throw.
  */
+
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

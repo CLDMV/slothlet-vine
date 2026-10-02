@@ -1,15 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-websocket.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The websocket transport against BOTH the shared Channel conformance suite and the full e2e bar from
- * `docs/DESIGN.md`, over a REAL `ws` connection on an EPHEMERAL (OS-assigned, port 0) port.
- *
- * The boundary is a genuine network hop over localhost: a real `WebSocketServer`, a real client
- * socket, the serve side running on the server-accepted socket and the grow side on the client
- * socket. Every server + socket is torn down in `afterEach` / `afterAll` so the test process exits
- * with no leaked handles or held ports, and every port is ephemeral — never a fixed one.
  */
+
 import { describe, it, expect, afterEach, afterAll } from "vitest";
 import { once, EventEmitter } from "node:events";
 import path from "node:path";

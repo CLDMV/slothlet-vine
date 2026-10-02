@@ -1,19 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/serve-principal-units.test.vitest.mjs
+ *	@Date: 2026-09-28T12:47:12-07:00 (1790624832)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:23-07:00 (1790968823)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Unit-level coverage of the channel principal (#33) with a FAKE slothlet instance and hand-built
- * frames: principal normalization and the `serving.principal` diagnostic, the fail-closed setup
- * preconditions, every fail-closed path of the call gate (a gate that throws / answers junk / is
- * missing, a resolver that throws / answers junk, a scope that fails), the pipeline ORDER (`NO_LEAF`
- * beats `DENIED` beats `DATA_ONLY`), the `VINE_DENIED` wire shape, the event server-half's narrowing
- * rules (`null` = the channel; a forged sibling is ignored; a hint under the principal can only
- * narrow), `grow({ principal })`'s event half, and an explicit pin of the v1 no-principal behaviour.
- *
- * A fake is the point: `permissions.global.checkCall` does not exist on any published slothlet yet
- * (CLDMV/slothlet#508), and the fail-closed paths need a gate that misbehaves on demand. The real-
- * instance e2e lives in `e2e-loopback-principal.test.vitest.mjs`.
  */
+
 import { describe, it, expect } from "vitest";
 import { grow } from "../src/grow.mjs";
 import { serve } from "../src/serve.mjs";

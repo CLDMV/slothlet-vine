@@ -1,49 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/lib/events.mjs
+ *	@Date: 2026-09-20T23:09:59-07:00 (1789970999)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Symmetric event forwarding for ONE end of a vine. Both ends of a link carry an identical copy of
- * this: cross-vine event delivery is bidirectional, because the two linked instances are copies of the
- * same api (per-leaf stubs mounted at identical paths) and therefore hold the SAME event permissions.
- * An event fired in either instance reaches subscribers in the other as if it were one api.
- *
- * ## The one rule (slothlet's, not the vine's)
- *
- * slothlet gates SUBSCRIBERS, never emitters — an emit is open; each subscriber is resolved to one of
- * three delivery levels: `deny` (nothing), `notify` (a trigger, no payload), `allow` (trigger +
- * payload). The vine never invents a level or gates who may emit. It adds exactly one boundary rule:
- * **a subscriber only ever receives what its level allows, and nothing more than that is ever put on a
- * wire heading toward it.** Because the permissions are identical in every instance, the EMITTING side
- * can resolve any subscriber — local or across the vine — and send each remote one only what its level
- * permits, so a `notify` subscriber's payload never crosses. Whichever side resolves it gets the same
- * answer, so no trust flag, no authority handoff, no emit policy is needed.
- *
- * ## Two halves, both on every end
- *
- * - **server half** — a far `sub` for one of THIS instance's events: resolve the far subscriber's level
- *   HERE against this instance's rules, ack it (so a downgrade/denial is a catchable result, not a
- *   silent absence), host-subscribe, and forward each emit cut to that level — re-resolved per emit so a
- *   live rule change is honoured. Keyed by the FAR side's `subId` in {@link incoming}.
- * - **subscriber half** — {@link subscribe} sends a `sub` for a FAR event (carrying this subscriber's
- *   own `api.slothlet.caller()` identity, never one asserted for someone else) and delivers the far
- *   `event` frames to a local listener. Keyed by OUR `subId` in {@link outgoing}.
- *
- * The two ends never collide: each draws its outgoing `subId`s from its own nonce, and frames are routed
- * by TYPE (`sub`/`unsub` → server half, `sub-ack`/`event` → subscriber half), so the same four frames
- * flow both ways over one channel.
- *
- * ## With a channel principal (#33)
- *
- * The far side's `subscriberPath` is caller-asserted. On a trusted transport that is fine — the grow
- * side captures its real `caller()` honestly. Across an UNTRUSTED boundary it is a hole: `null` resolves
- * `allow` unconditionally (a host subscription), and any string resolves whatever the most specific
- * rule for that string says. When this end bound a principal (`serve()` / `grow()` `principal`
- * option), the server half resolves every far `sub` as the PRINCIPAL instead: `null` is the channel
- * itself, and a far `subscriberPath` is honoured only when it sits at/under the principal's path — and
- * then only to NARROW (the min of the two levels), never to widen. A forged claim can cost the far side
- * deliveries; it can never gain it any. Resolution runs inside `context.run(principal.context)` when a
- * context is bound, so conditional event rules see the actor, and is re-done per emit as before.
  */
+
 import { CODES, VineError } from "./errors.mjs";
 import { SUB_LEVELS, eventFrame, findFunctionArg, subAckFrame, subFrame, unsubFrame } from "./frame.mjs";
 import { PendingTable, makeNonce } from "./link.mjs";

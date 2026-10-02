@@ -1,21 +1,16 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/testing/conformance.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:13-07:00 (1790968813)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The reusable Channel conformance suite. ANY transport — built-in or consumer-written — runs this
- * against a factory that produces a connected channel pair, and every built-in transport's test file
- * runs it alongside its own e2e.
- *
- * The harness imports NO test framework. `describe` / `it` / `expect` are INJECTED, so a consumer on
- * vitest, node:test, jest or mocha runs the same suite by handing in their own three functions and
- * this package never grows a runner dependency.
- *
- * @example
- * import { describe, it, expect } from "vitest";
- * import { createPair } from "@cldmv/slothlet-vine/transport/loopback";
- * import { channelConformance } from "@cldmv/slothlet-vine/testing";
- *
- * channelConformance("loopback", () => createPair(), { describe, it, expect });
  */
 
 /** How long a conformance assertion waits for an async delivery before giving up. @type {number} */

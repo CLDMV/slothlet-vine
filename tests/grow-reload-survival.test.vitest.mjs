@@ -1,17 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/grow-reload-survival.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:21-07:00 (1790968821)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * A grow-side host may call slothlet's own `api.slothlet.api.reload()` on itself for reasons that have
- * nothing to do with the vine — its own base modules changed on disk, or it just wants a fresh eager
- * rebuild. `grow()` mounts stubs with the SYNTHETIC (bare-function) add form
- * (`api.slothlet.api.add(path, stub, { moduleID })`, see `grow.mjs`), and on slothlet <3.15.0 a base
- * `reload()` silently dropped synthetic adds from its operation-history replay: a grow-side host
- * reloading itself would lose every vine-mounted stub with no error and no `link.close()` ever being
- * called. Fixed upstream in CLDMV/slothlet#306 (v3.15.0 changelog: "a synthetic mount is no longer lost
- * on a base reload"). This pins the fixed behaviour — required no vine code change — so an upstream
- * regression is caught here rather than shipping quietly. Requires `@cldmv/slothlet >=3.15.0`.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

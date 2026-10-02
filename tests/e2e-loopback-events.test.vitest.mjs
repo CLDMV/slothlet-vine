@@ -1,22 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-loopback-events.test.vitest.mjs
+ *	@Date: 2026-09-20T23:09:59-07:00 (1789970999)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Cross-vine EVENT forwarding (#20) over the loopback transport, with a REAL slothlet instance on
- * each side: a grow-side subscriber's level is resolved on the serving side and the payload stripped
- * before it crosses (deny / notify / allow), the granted level is a catchable handshake result,
- * unsubscribe and `once` tear the subscription down, a host subscription is trusted (`allow`), and a
- * function in the payload degrades to trigger-only rather than crossing.
- *
- * Requires the two event enablers (`api.slothlet.event.resolveLevel` + `api.slothlet.caller`) AND
- * their cross-instance caller-isolation fix — slothlet ≥ 3.18.1. The enablers first shipped in 3.18.0,
- * but 3.18.0 leaked a foreign instance's caller across the process-shared async context, so the serving
- * side's forwarding listener was pinned to the far subscriber's identity and the host-only re-resolve
- * was denied at emit (CLDMV/slothlet#436). That only bites a SAME-PROCESS transport — this loopback
- * suite is exactly that — because a real worker/process/socket boundary can't propagate the context; so
- * the gate is 3.18.1, not 3.18.0. The whole suite is skipped cleanly on older slothlet so it stays green
- * until the dependency bump lands.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,18 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/conformance-harness.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:15-07:00 (1790968815)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The conformance harness's OWN internal safety net: `waitFor()` fails loudly with a named timeout
- * rather than hanging the suite forever when a transport under test never actually delivers anything.
- * That is the harness protecting itself against a broken (or not-yet-working) consumer-written
- * transport, so it belongs to the harness's own test surface, not to any one built-in transport.
- *
- * `channelConformance` takes its test framework (`describe`/`it`/`expect`) INJECTED, which is exactly
- * the hook this needs: intercept `it()` to CAPTURE each case instead of registering it with vitest, run
- * only the one case that reaches `waitFor` (the simplest delivery case), and assert on ITS rejection
- * directly — without ever letting a suite that is deliberately broken register as thirteen real,
- * failing vitest tests.
  */
+
 import { describe, it, expect } from "vitest";
 import { channelConformance } from "../src/testing/conformance.mjs";
 

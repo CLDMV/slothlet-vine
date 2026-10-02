@@ -1,48 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/transport/process.mjs
+ *	@Date: 2026-08-23T21:30:12-07:00 (1787545812)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:14-07:00 (1790968814)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The node `child_process` IPC transport — a Channel implementation over a forked child's IPC channel.
- * It has TWO endpoints, one per side of the boundary, and each side wraps a different object:
- *
- * - **Parent** — {@link createChannel}`(child)` wraps a `ChildProcess` returned by `fork(...)`. It
- *   sends with `child.send(frame)`, receives on `child.on("message", …)`, and detects the child's
- *   death on `child.on("exit"|"disconnect"|"error", …)` — real death detection, not a heartbeat.
- * - **Child** — {@link createParentChannel}`()` wraps the child's own `process` global. It sends with
- *   `process.send(frame)`, receives on `process.on("message", …)`, and detects the parent going away
- *   on `process.on("disconnect", …)`.
- *
- * A channel is DIRECTIONAL (one serve end, one grow end); a forked child gives you exactly the pair
- * you need — grow on the parent over `createChannel(child)`, serve in the child over
- * `createParentChannel()`.
- *
- * ## Serialization — fork with `{ serialization: "advanced" }`
- *
- * Node IPC has two serialization modes. The default, `"json"`, round-trips a frame through
- * `JSON.stringify`/`JSON.parse`, which SILENTLY DEGRADES the structured-clone types: a `Date` becomes
- * an ISO string, a `Map`/`Set` becomes `{}`, a `Buffer` becomes `{ type: "Buffer", data: [...] }`.
- * `"advanced"` uses the V8 structured-clone serializer, which preserves all of those with fidelity —
- * so a consumer that forwards `Date`/`Map`/`Set`/`Buffer` payloads MUST fork with
- * `fork(modulePath, args, { serialization: "advanced" })`, and both sides then agree.
- *
- * This transport DECLARES `capabilities.structuredClone: true` because that is the mode it is meant to
- * run under and the one the e2e exercises. The honest caveat: the transport cannot force the far
- * side's fork options, so under the DEFAULT `"json"` serialization that guarantee does not hold. In
- * vine v1 the wire frames are plain JSON-safe objects (strings, numbers, arrays, nested plain
- * objects), so `"json"` still works for the protocol itself — `"advanced"` is the recommended mode,
- * required only once a leaf's arguments or return value carry a structured-clone type. `codec: "none"`
- * either way: the medium clones for us, so this module never encodes/decodes frames itself.
- *
- * ## Ownership
- *
- * The parent's `close()` detaches its listeners and, if the child is still connected, calls
- * `child.disconnect()` — it does NOT `child.kill()`. Whoever forked the child owns its lifecycle; a
- * transport tearing the process down would be reaching past its boundary. Death detection stays live
- * regardless: a killed or crashed child surfaces on `onClose` via `exit`/`disconnect`/`error`. The
- * child's `close()` detaches its listeners and leaves the IPC channel alone for the same reason — the
- * parent owns the connection, and the parent already learns of the child's exit on its own `exit`
- * event, so the child need not disconnect itself.
  */
+
 import { createInbox } from "../lib/inbox.mjs";
 
 /**

@@ -1,37 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/lib/principal.mjs
+ *	@Date: 2026-09-28T12:47:12-07:00 (1790624832)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The channel principal (#33): the ONE seam through which a serving (or growing) end binds a caller
- * identity to a channel and asks slothlet's rules engine what that identity may do.
- *
- * ## The model
- *
- * The channel is the trust domain; the host names it; slothlet's rules decide what that name may do;
- * the vine enforces the decision before anything runs or crosses. A principal is `{ path, context }`:
- * `path` is a dotted caller identity that slothlet's `caller:` globs match (call rules AND event
- * rules), and `context` is the verified per-channel runtime context (the authenticated user, roles,
- * tenant, …) the host wants conditional rules, principals-with-`requires`, and the leaves themselves
- * to see. It comes ONLY from `serve()` / `grow()` options — never from a frame. A `Channel` stays a
- * dumb seam; the host obtains the identity from the transport's own auth result and hands it in.
- *
- * ## Why the vine asks, then enforces, rather than dispatching AS the principal
- *
- * slothlet has no public way to dispatch a call *as* an identity: caller identity exists only as a
- * genuine wrapper slothlet's own `runInContext` places on the async store, and `context.run()` /
- * `scope()` from the host keep host standing (`TRUSTED_ROOT` propagates to host-descended scopes).
- * So the serving end cannot make slothlet's own gate fire as the principal — it must ask the rules
- * engine and enforce the answer itself, exactly as it already does for events with
- * `event.resolveLevel`. The call-side twin is `api.slothlet.permissions.global.checkCall(callerPath,
- * targetPath, args)` (CLDMV/slothlet#508): full call-gate semantics (`callMeta = { args, target }`
- * for function conditions, the ambient runtime context, stale principals resolved, the caller
- * treated as a module without a source file, audit events, `true` when the permission system is
- * disabled, host-only). The older `global.checkAccess(caller, target)` is a SILENT query — it passes
- * `callMeta = null`, so resource-scoped conditions and `requires`-principals are non-matches through
- * it — which is why {@link gate} does not fall back to it: a fallback that changes what rules mean
- * must never be silent. Everything here fails CLOSED: a missing API, a throw, a non-boolean verdict,
- * a resolver that returns junk — each is a denial, never a pass.
  */
+
 import { isSafePath } from "./frame.mjs";
 
 /**

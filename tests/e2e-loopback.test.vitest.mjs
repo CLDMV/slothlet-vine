@@ -1,13 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-loopback.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The full e2e bar from `docs/DESIGN.md` over the loopback transport, with a REAL slothlet instance
- * on each side: value round-trips, remote-error re-throw, permission gating on a mounted stub,
- * budget expiry, far-side death, and link teardown.
- *
- * This is the reference e2e every other transport's test file mirrors against its own real boundary.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

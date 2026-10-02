@@ -1,14 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/fixtures/grow-api/events.mjs
+ *	@Date: 2026-09-20T23:09:59-07:00 (1789970999)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:18-07:00 (1790968818)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Grow-side fixture: a real MODULE that subscribes to a FAR event through the vine.
- *
- * It has to be a module, not the test's host handle: `link.event.on` attributes the subscription to
- * `api.slothlet.caller()`, and a host-handle subscription always resolves `allow` (host standing).
- * Subscribing from a module is the only way to exercise the `notify` / `deny` levels the serving
- * side resolves against a real subscriber identity.
  */
+
 import { self } from "@cldmv/slothlet/runtime";
 
 const received = [];

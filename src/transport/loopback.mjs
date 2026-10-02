@@ -1,25 +1,16 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/transport/loopback.mjs
+ *	@Date: 2026-08-23T21:30:12-07:00 (1787545812)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:14-07:00 (1790968814)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The loopback transport: two Channels wired to each other inside one process. It is the reference
- * implementation of the Channel contract and the workhorse the conformance harness and the e2e bar
- * run against — a real link, minus the real boundary.
- *
- * Two properties are deliberate:
- *
- * - **Delivery is asynchronous** (`queueMicrotask`), never a direct call into the peer's handler.
- *   A synchronous loopback would let `send()` re-enter the caller's own stack and would make the
- *   suite pass on ordering guarantees a real postMessage/socket boundary does not give.
- * - **Frames sent before the peer registers a handler are BUFFERED**, not dropped, and that promise
- *   is declared on `capabilities.buffersUntilHandler` so the conformance suite can assert the
- *   behaviour this transport claims rather than one behaviour for all transports. It matters in
- *   practice: `serve()` publishes its surface immediately, and a `grow()` that has not finished
- *   awaiting its own setup must still receive it.
- *
- * Frames are passed BY REFERENCE — same process, no clone step — so every value survives exactly
- * (`capabilities.structuredClone: true`, `codec: "none"`). Consumers who want a real serialization
- * boundary should test against a transport that has one.
  */
 
 /**
