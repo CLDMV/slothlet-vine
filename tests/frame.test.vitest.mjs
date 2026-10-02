@@ -1,14 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/frame.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:21-07:00 (1790968821)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Frame construction, the TOTAL frame validator, and the two guards it exists for: prototype-
- * polluting paths and function-valued arguments.
- *
- * The prototype-pollution case is not hypothetical. Probed against @cldmv/slothlet 3.14.0,
- * `api.slothlet.api.add("__proto__.x", fn)` is accepted and lands the function on
- * `Object.prototype` — so a `surface` frame is an untrusted input with a real exploit behind it.
  */
+
 import { describe, it, expect } from "vitest";
 import {
 	FRAME_VERSION,

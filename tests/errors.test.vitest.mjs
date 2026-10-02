@@ -1,10 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/errors.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:17-07:00 (1790968817)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The error taxonomy and its wire projection: stable codes, remote-error impersonation, and a
- * `toWire` that is total against whatever a leaf actually threw.
  */
+
 import { describe, it, expect } from "vitest";
 import { CODES, VineError, VineRemoteError, fromWire, toWire } from "../src/lib/errors.mjs";
 

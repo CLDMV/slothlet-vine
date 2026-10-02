@@ -1,4 +1,19 @@
 /**
+ *
+ *	@Project: @cldmv/slothlet-vine
+ *	@Filename: /tests/run-vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:23-07:00 (1790968823)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
+ *
+ */
+
+/**
  * @fileoverview OOM-safe Vitest runner for slothlet-vine — delegates to
  * @cldmv/vitest-runner, which spawns each test file in its own child process and
  * (under coverage) uses a blob-per-file + `--mergeReports` strategy so a single

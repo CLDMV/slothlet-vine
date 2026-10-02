@@ -1,14 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/websocket-connect-ws-import.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:23-07:00 (1790968823)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * `transport/websocket`'s `connect()` is the ONE place in the package that imports the optional peer
- * dependency `ws` (see the module header) — and the one place that must degrade cleanly when it is
- * missing, or fall back correctly when the resolved module is shaped unexpectedly. Both scenarios need
- * `import("ws")` to resolve differently per test, which the file-wide, hoisted `vi.mock` used by every
- * other test file cannot do (one factory, fixed for the whole file). This file uses `vi.doMock` +
- * `vi.resetModules()` + a fresh dynamic import of the module under test per case instead.
  */
+
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 afterEach(() => {

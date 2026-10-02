@@ -1,36 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/transport/post-message.mjs
+ *	@Date: 2026-08-23T21:30:12-07:00 (1787545812)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:14-07:00 (1790968814)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The post-message transport: a Channel over the `postMessage` port surface shared by a browser
- * `Worker`, a browser `MessagePort`, and a node `worker_threads` `MessagePort`. Every one of those
- * exposes the same three things — `postMessage(frame)`, a `message` event
- * (`addEventListener('message', fn)`, the only wiring this module actually uses to receive), and
- * (mostly) `close()` — so ONE module serves them all. The medium structured-clones the frame, so
- * frames cross as plain objects with no codec of our own (`capabilities.structuredClone: true`,
- * `codec: "none"`).
- *
- * **Deliberately NOT supported here: a node `worker_threads` `Worker` handle** (the object
- * `new Worker(...)` on the main thread returns). It exposes `postMessage()` but, unlike
- * `MessagePort`, is a plain `EventEmitter` — no `addEventListener`, and no working `onmessage=`
- * setter either (assigning one is silently inert; Node's `Worker` never reads it), so this module's
- * receive path can never actually wire up and every inbound frame is dropped. Use
- * `transport/worker-threads`'s `createChannel(worker)` for that object instead — it wraps the
- * EventEmitter API correctly and adds real death detection on top.
- *
- * Two properties are deliberate and declared:
- *
- * - **`buffersUntilHandler: true`.** The underlying `message` listener is attached EAGERLY at
- *   {@link createChannel} time, and a frame that arrives before `onMessage()` has been called is
- *   QUEUED and replayed, in order, once a handler is registered (see `src/lib/inbox.mjs`). A
- *   consumer may therefore create the channel, `await` something, and only then call `grow()`
- *   without losing the far side's one-shot `surface` frame (CLDMV/slothlet-vine#41). Frames that
- *   reach the port before `createChannel()` attaches its listener are the medium's business, not
- *   this module's: a node `MessagePort` queues them until a listener starts it, but not every medium
- *   does — so create the channel in the same tick as the port or worker it wraps, before any `await`.
- * - **Death detection is only what the port surface actually delivers**, and it varies by medium —
- *   see {@link createChannel}. We never fake a signal we cannot observe.
  */
+
 import { createInbox } from "../lib/inbox.mjs";
 
 /** The close-signalling events wired by default. Extra ones (e.g. `"exit"`, `"error"`) are opt-in. @type {string[]} */

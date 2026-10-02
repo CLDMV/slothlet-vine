@@ -1,29 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/regression-send-failure.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:22-07:00 (1790968822)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * REGRESSION LOCK for the send-failure policy (final-review findings 1 + 2).
- *
- * A `channel.send(frame)` failure has two distinct causes and every transport now keeps them apart:
- *
- * - **The medium REFUSES this frame** — an un-serializable argument the data-only scan cannot see (a
- *   `Symbol` / a value hiding a function → `DataCloneError` on the structured-clone family and a
- *   synchronous serializer throw from `child.send`; a `BigInt` → a `JSON.stringify` throw on the
- *   websocket JSON codec). This is a PER-CALL fault: `send()` rethrows, the core settles JUST that
- *   call `VINE_BAD_FRAME`, and the link — plus every other in-flight call — stays alive.
- * - **The channel is DEAD** — that fires `onClose` and settles everything `VINE_GONE`; it is covered
- *   by each transport's own e2e (point 5) and is deliberately NOT re-tested here.
- *
- * The historical defect this locks out: `src/transport/process.mjs` treated a synchronous serializer
- * throw as far-side DEATH, so one un-cloneable argument on one call killed the WHOLE link (every
- * in-flight call `VINE_GONE`, `link.closed` → `gone`) while the child was still alive. The
- * post-message / worker-threads / websocket transports had the mirror bug in the other direction —
- * swallowing the refusal so the call hung to its full budget instead of failing fast.
- *
- * Each transport is exercised over its REAL boundary (an in-process structured-clone MessageChannel
- * hop for the port transports, a real forked child for `process`, a real `ws` socket for
- * `websocket`), so the uniform policy is proven end to end through `grow()`.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import { once } from "node:events";
 import path from "node:path";

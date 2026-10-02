@@ -1,16 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/serve-around-units.test.vitest.mjs
+ *	@Date: 2026-09-28T12:57:24-07:00 (1790625444)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:23-07:00 (1790968823)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Unit-level coverage of `serve()`'s per-call `around` wrapper (#51) with a FAKE slothlet instance and
- * hand-built frames: option validation, what `around` receives, how its return / throw becomes the
- * call's terminal frame, the data-only return check applied to it, a re-invocable `invoke()` that
- * always runs the gated call with a pristine copy of the arguments, and its place in the pipeline —
- * after `NO_LEAF`, after the principal gate (inside the principal's scope), and after the args
- * data-only check, so it never sees a frame the vine would have refused.
- *
- * The real-instance end-to-end lives in `e2e-loopback-around.test.vitest.mjs`.
  */
+
 import { describe, it, expect } from "vitest";
 import { serve } from "../src/serve.mjs";
 import { CODES } from "../src/lib/errors.mjs";

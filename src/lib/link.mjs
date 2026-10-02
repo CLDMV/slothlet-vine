@@ -1,19 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/lib/link.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The correlation machinery shared by every link: a settle-once pending table with per-call budget
- * timers and a bulk `settleAll` for the two ways a link ends (local close → `VINE_CLOSED`, far-side
- * death → `VINE_GONE`).
- *
- * The invariant this file exists to hold is **settle-once**: a callId is resolved or rejected
- * exactly once — by a `result`, an `error`, its budget timer, or a bulk settle — and every later
- * terminal for it is dropped. Without it, a late `result` arriving after a budget expiry would
- * "un-fail" a call the caller has already handled as failed.
- *
- * The second invariant is that a pending call NEVER hangs: every entry is armed with a timer, so
- * even a far side that answers nothing and never closes still settles the caller.
  */
+
 import { CODES, VineError } from "./errors.mjs";
 
 /** Fallback discriminator when `crypto.randomUUID` is unavailable. @type {number} */

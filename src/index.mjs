@@ -1,27 +1,16 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/index.mjs
+ *	@Date: 2026-08-23T21:30:12-07:00 (1787545812)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Vines between slothlet api trees — location-transparent forwarding leaves over an injected
- * Channel. One end {@link serve}s its callable leaves; the other {@link grow}s a forwarding stub per
- * leaf at the identical dotted path, so a caller cannot tell which side of the boundary the
- * implementation lives on, and slothlet's own permission system gates the stub exactly as it gates
- * a real leaf.
- *
- * The core NEVER imports a transport: it consumes only the {@link Channel} interface below.
- * Built-in transports live under `@cldmv/slothlet-vine/transport/*`; a consumer may pass any object
- * satisfying the contract. See `docs/DESIGN.md` for the normative protocol and
- * `schemas/frame.schema.json` for the wire frames.
- *
- * @example
- * import { grow, serve } from "@cldmv/slothlet-vine";
- * import { createPair } from "@cldmv/slothlet-vine/transport/loopback";
- *
- * const [near, far] = createPair();
- * await serve(workerApi, far, { paths: ["exts"] });
- * const link = await grow(hostApi, near, { budgetMs: 5000 });
- * await hostApi.exts.pdfViewer.open("a.pdf"); // executes on the serving instance
- * await link.close();
  */
 
 /**

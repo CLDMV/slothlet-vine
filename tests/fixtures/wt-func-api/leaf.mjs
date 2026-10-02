@@ -1,11 +1,16 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/fixtures/wt-func-api/leaf.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:21-07:00 (1790968821)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * A serve-side leaf whose RETURN value contains a function. The vine is data-only in both directions,
- * so serve rejects this answer with `VINE_DATA_ONLY`; the grow side sees it as a `VINE_REMOTE` error
- * carrying `remoteCode: "VINE_DATA_ONLY"`. Isolated in its own fixture dir so the main serve fixtures
- * stay a clean data-only surface.
  */
 
 /**

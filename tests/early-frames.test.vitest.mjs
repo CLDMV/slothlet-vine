@@ -1,20 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/early-frames.test.vitest.mjs
+ *	@Date: 2026-09-28T03:15:48+00:00 (1790565348)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:17-07:00 (1790968817)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Regression for CLDMV/slothlet-vine#41: a consumer that creates a channel, `await`s something (a
- * slothlet boot, a config load), and only THEN calls `grow()` must still receive the far side's
- * one-shot `surface` frame.
- *
- * Each case uses the REAL medium — a `worker_threads.Worker`, a `MessageChannel`, a forked child and
- * a `ws` connection — and waits until the surface frame has provably reached this process (an extra
- * `once("message")` on the medium itself) before `grow()` registers its handler. That makes the
- * "frame arrived before the handler existed" condition deterministic rather than timing-dependent.
- *
- * Before the fix every one of these failed `VINE_BUDGET`: the transport's eager listener had the
- * frame in hand and discarded it because no handler was registered yet (`buffersUntilHandler:
- * false`). The transports now queue those frames and replay them, in order, on `onMessage()`.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import { once } from "node:events";
 import path from "node:path";

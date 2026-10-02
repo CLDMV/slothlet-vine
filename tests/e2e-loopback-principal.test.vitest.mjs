@@ -1,28 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-loopback-principal.test.vitest.mjs
+ *	@Date: 2026-09-28T12:47:12-07:00 (1790624832)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The channel principal (#33) with REAL slothlet instances: a serve (or grow) end binds a caller
- * identity to its channel, slothlet's own rules engine decides what that identity may call and
- * subscribe to, and the vine enforces the decision before anything runs or crosses.
- *
- * Two halves, gated differently on the installed slothlet:
- *
- * - The EVENT half needs only `api.slothlet.event.resolveLevel` (slothlet ≥ 3.18.1 for a same-process
- *   transport — see `e2e-loopback-events.test.vitest.mjs`), so `grow({ principal })` — the grow end
- *   answering the far side's `sub` frames as its principal — runs here against whatever is installed.
- * - The CALL half needs `api.slothlet.permissions.global.checkCall` (CLDMV/slothlet#508), which no
- *   published slothlet carries yet. `serve({ principal })` therefore fails CLOSED on the installed
- *   version (asserted below, unskipped), and the call-gate tables from the design — the same frames on
- *   a `remote.renderer` and a `remote.admin` channel, a raw frame that bypasses the grow stub, the
- *   write-protected context, the audit event, two websocket clients with different principals — are
- *   `describe.skipIf(!hasCheckCall)`, feature-detected on a real instance, so the suite stays green
- *   until that slothlet release lands and then runs for real without a further change here.
- *
- * The far side is often a RAW PEER here — a bare channel end that builds frames by hand — because the
- * point of #33 is precisely a peer that does NOT go through the vine's own stub / `event.on` (a page
- * script with a socket), and because only a raw `sub` can assert an arbitrary `subscriberPath`.
  */
+
 import { describe, it, expect, afterEach, afterAll } from "vitest";
 import { once } from "node:events";
 import path from "node:path";

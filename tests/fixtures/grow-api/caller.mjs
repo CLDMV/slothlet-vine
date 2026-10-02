@@ -1,13 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/fixtures/grow-api/caller.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:18-07:00 (1790968818)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Grow-side fixture: a real MODULE that reaches the forwarded leaves through `self`.
- *
- * It has to be a module, not the test itself: slothlet's permission gate exempts the host's bound
- * `api` handle by design (host standing), so a deny rule only bites when a module makes the call.
- * That is exactly the shape the e2e permission assertion needs.
  */
+
 import { self } from "@cldmv/slothlet/runtime";
 
 /**

@@ -1,25 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-post-message.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The post-message transport against BOTH the shared Channel conformance suite AND the full e2e bar
- * from `docs/DESIGN.md`, run over a REAL structured-clone postMessage boundary.
- *
- * ## The boundary, and why it is faithful
- *
- * Both the conformance pair and the e2e link ride a node `worker_threads` `MessageChannel`
- * (`{ port1, port2 }`). Unlike loopback — which passes frames BY REFERENCE inside one realm — a
- * `worker_threads` MessageChannel serializes every frame with the structured-clone algorithm even
- * when both ports live on the same thread: the receiver gets a COPY (verified: `ev.data !== sent`),
- * `Date`/`Map` survive, and a frame containing a function throws `DataCloneError` at `postMessage`
- * exactly as it would across a real worker. Delivery is genuinely asynchronous (a macrotask), and
- * the port's own `message`/`close` events are the real ones the transport wraps in production. It is
- * the SAME port surface a browser `Worker`, a browser `MessagePort`, and a real `worker_threads`
- * `Worker` expose — so a same-thread MessageChannel exercises the transport's cloning boundary and
- * async delivery without the extra process a real `Worker` would add, and (the point that decides it
- * for the death test) node's MessagePort propagates a `'close'` to the peer, giving point 5 a real
- * far-side-death signal to settle on.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

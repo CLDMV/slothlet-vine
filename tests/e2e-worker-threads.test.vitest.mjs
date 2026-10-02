@@ -1,22 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-worker-threads.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:17-07:00 (1790968817)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The worker-threads transport against BOTH bars from `docs/DESIGN.md`:
- *
- * - the shared Channel conformance suite, run over two paired ports of a `worker_threads.MessageChannel`
- *   (a real structured-clone boundary in one process — no second thread needed to prove the Channel
- *   contract, and it exercises the child-side `createParentChannel` on the main thread so its code is
- *   measured); and
- * - the full e2e bar over a REAL `worker_threads.Worker`: the serve side boots a genuine slothlet
- *   instance INSIDE the worker (`fixtures/wt-serve-worker.mjs`) and answers over `parentPort`; the
- *   grow side runs on the main thread and mounts forwarding stubs. Value round-trips, remote-error
- *   re-throw, permission gating on a mounted stub, budget expiry, real thread death, and teardown.
- *
- * Death detection is the transport's distinguishing property, so point 5 is done for real:
- * `worker.terminate()` actually ends the thread, the parent channel observes the `"exit"` event, and
- * every in-flight call settles `VINE_GONE` — no budget wait, no hang.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import { MessageChannel, Worker } from "node:worker_threads";
 import { EventEmitter } from "node:events";

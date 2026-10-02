@@ -1,41 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/grow.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The growing end of a vine: take the far side's leaf manifest and mount one forwarding stub per
- * leaf at the IDENTICAL dotted path in the local instance, so a caller writing
- * `self.exts.pdfViewer.open()` cannot tell which process the implementation lives in.
- *
- * ## Why identical paths, and what that buys (probed against @cldmv/slothlet 3.14.0)
- *
- * Stubs are mounted one leaf at a time with the BARE-FUNCTION form,
- * `api.slothlet.api.add(fullPath, stub, { moduleID })`, all sharing ONE moduleID per link:
- *
- * - the recorded permission identity is then the exact path — a rule targeting `far.ns.leaf`
- *   matched a stub mounted that way, verified — which is the whole point: **slothlet's own
- *   permission system gates a stub exactly as it gates a real leaf, and a denied call never runs
- *   the stub body, so it never reaches the wire**;
- * - many per-leaf adds may share one moduleID, and a single `remove(moduleID)` unmounts all of them
- *   (and prunes the namespaces they created) — as long as the id is hyphenated, which is a real and
- *   silent trap documented at the `moduleID` line below;
- * - `remove()` of an id that was never mounted resolves quietly, so close is safe to call twice.
- *
- * Two behaviours a consumer should know about, both verified rather than assumed:
- *
- * - **Permission gating covers module→leaf calls, not host→leaf calls.** A call made through the
- *   bound object `slothlet()` returned carries the host's own standing and is never checked; that
- *   is slothlet's documented host carve-out, not a vine gap. Rules bite when a MODULE calls the
- *   stub (`self.far.ns.leaf()` → `PERMISSION_DENIED`).
- * - **A path already occupied locally is not overwritten.** slothlet's collision handling keeps the
- *   incumbent and the add is a silent no-op unless `forceOverwrite` is passed — which a vine never
- *   does, because clobbering local reality with a remote's idea of the tree is not a trade worth
- *   making. An occupied path is therefore not mounted at all: it is reported on `link.collisions`
- *   and stays off `link.leaves`, so the link never claims to forward a path the incumbent answers.
- *
- * The same respect for local reality governs teardown, where it is easy to get backwards: a path the
- * vine mounted may have been taken over since, and `close()` removes only what the link still OWNS.
- * See the note on `close()`.
  */
+
 import { CODES, VineError, fromWire } from "./lib/errors.mjs";
 import { callFrame, findFunctionArg, isSafePath, parseFrame } from "./lib/frame.mjs";
 import { createEventForwarder } from "./lib/events.mjs";

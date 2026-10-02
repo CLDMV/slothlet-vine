@@ -1,39 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/serve.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:13-07:00 (1790968813)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The serving end of a vine: publish this instance's callable leaves to the far side of a channel,
- * then answer `call` frames by invoking the real leaf.
- *
- * ## Where the surface comes from, and why
- *
- * `docs/DESIGN.md` allows either enumerating from the loader's records
- * (`api.slothlet.api.leaves`) or walking the live api object, and asks for the choice to be
- * documented. This implementation uses the RECORDS. Both options were probed against
- * @cldmv/slothlet 3.14.0:
- *
- * - **Walking the live object is wrong under `mode: "lazy"`.** An un-materialized namespace is a
- *   CALLABLE proxy with no own keys, so a walk of a lazy instance reports `deep` as a leaf and never
- *   sees `deep.tools.slow` at all. It also can't tell a namespace from a leaf without invoking
- *   materialization as a side effect of merely being served.
- * - **`leaves(".", { details: true })` is complete under lazy** (it settles the owned subtree and
- *   answers from the loader's records) and it labels every path `namespace` / `function` / `data`,
- *   so data leaves — `export const answer = 42` — are excluded from a CALLABLE surface for free.
- *   Verified: a lazy instance answered `["deep.nested.more.x", "deep.tools.slow", "math.add"]`.
- *
- * The one thing records cannot do is enumerate the WHOLE tree. `leaves(".")` covers the base load
- * only; runtime `api.slothlet.api.add()` mounts are module-scoped and there is no registry of
- * mounted moduleIDs to iterate (`api.slothlet.api.modules` is the module-DISCOVERY helper, not a
- * mount registry). That is what {@link serve}'s `modules` option is for: name the runtime mounts to
- * include and their leaves are unioned in, still from the records.
- *
- * A second records quirk worth knowing: a mount made with the BARE-FUNCTION form
- * (`add(path, fn, { moduleID })`) is recorded with `kind: "data"`, so it is absent from
- * `leaves(id)`'s callable answer and present as `data` under `{ details: true }`. Mounts made with
- * the `{ exports }` form are recorded as `function` correctly. Vine-grown stubs use the bare form
- * (see `grow.mjs`), which means a grown surface is NOT re-served onward by default — chaining a
- * vine through a middle instance is out of scope for v1 either way.
  */
+
 import { CODES, VineError } from "./lib/errors.mjs";
 import { errorFrame, findFunctionArg, isSafePath, parseFrame, resultFrame, surfaceFrame } from "./lib/frame.mjs";
 import { createEventForwarder } from "./lib/events.mjs";
