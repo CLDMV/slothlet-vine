@@ -317,7 +317,7 @@ describe("principal — fail-closed setup preconditions", () => {
 
 	it("throws when permissions.global.checkCall is missing, naming the slothlet change it needs", async () => {
 		await expect(serve(fakeApi({ noCheckCall: true }), fakeChannel(), { principal: "remote.r" })).rejects.toThrow(
-			/checkCall.*CLDMV\/slothlet#508/
+			/checkCall.*slothlet ≥ 3\.22\.0/
 		);
 	});
 

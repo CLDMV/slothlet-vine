@@ -75,7 +75,7 @@
 		"fix:headers": "fix-headers --config .configs/fix-headers.json"
 	},
 	"peerDependencies": {
-		"@cldmv/slothlet": ">=3.20.0",
+		"@cldmv/slothlet": ">=3.22.0",
 		"ws": ">=8.0.0"
 	},
 	"peerDependenciesMeta": {
@@ -89,7 +89,7 @@
 		"@cldmv/fix-headers": "^2.1.1",
 		"@cldmv/jsonv": "^1.0.2",
 		"@cldmv/prettier-plugin-jsonv": "^1.0.1",
-		"@cldmv/slothlet": "^3.20.0",
+		"@cldmv/slothlet": "^3.22.0",
 		"@cldmv/vitest-runner": "^1.2.0",
 		"@eslint/css": "^2.0.0",
 		"@eslint/js": "^10.0.1",

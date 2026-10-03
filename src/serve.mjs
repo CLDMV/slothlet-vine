@@ -51,7 +51,7 @@ import { assertPrincipalSupport, bindPrincipal, gate } from "./lib/principal.mjs
  *   that level (`null` no longer means "host"). A string is `{ path }`; a function is called
  *   synchronously per frame and may answer either form (a throw or junk denies that frame). Requires
  *   the instance's permission system to be enabled, `api.slothlet.context.scope` to work, and
- *   `api.slothlet.permissions.global.checkCall` (the slothlet release carrying CLDMV/slothlet#508) —
+ *   `api.slothlet.permissions.global.checkCall` (@cldmv/slothlet ≥ 3.22.0) —
  *   each checked here, fail-closed, as a `TypeError`. Omit it for a trusted transport (a worker you
  *   spawned, a process you forked): nothing changes, byte for byte. See `docs/PERMISSIONS.md`.
  * @param {(call: { callId: string, path: string, args: unknown[], principal: Readonly<{ path: string, context?: object }>|null, invoke: () => Promise<unknown> }) => unknown} [options.around] -
