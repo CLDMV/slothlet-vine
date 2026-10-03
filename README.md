@@ -16,17 +16,19 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ## ✨ What's New
 
-### Latest: v1.1.2 (September 2026)
+### Latest: v1.2.0 (October 2026)
 
-- **`@cldmv/slothlet` peer floor raised to `>=3.20.0` (#31)** — the suite now runs against slothlet 3.20.0, so that is the version the peer range guarantees. No runtime source changed; the rest of the release is dev-tooling bumps.
-- [View full v1.1.2 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.2.md)
+- **Channel principal: serving to a peer you can't trust ([#53](https://github.com/CLDMV/slothlet-vine/pull/53))** — `serve(api, channel, { principal })` binds a caller identity to the channel, taken from the transport's own authentication and never from a frame. Every call is judged by slothlet's rules as that identity, with the frame's own arguments, before the leaf runs; a refusal answers `VINE_DENIED`. Every subscription resolves as that identity, and the subscriber path a peer claims can only narrow its level. `grow()` takes the same option for its event half. Opt-in: without it nothing changes.
+- **`serve({ around })` ([#54](https://github.com/CLDMV/slothlet-vine/pull/54))** — a per-call wrapper for the host's own scope (a transaction under the bound actor, a deadline, an audit record), run after every vine check. Its `invoke()` is fixed to the authorized call and can be retried.
+- **Requires `@cldmv/slothlet` `>=3.22.0` ([#59](https://github.com/CLDMV/slothlet-vine/pull/59))** — the release that adds `permissions.global.checkCall`, the call gate the principal uses.
+- [View full v1.2.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.0.md)
 
 ### Recent Releases
 
+- **v1.1.3** (September 2026) — transports buffer frames that arrive before `grow()`/`serve()` registers a handler, so attaching after an `await` no longer loses the surface frame ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.3.md))
+- **v1.1.2** (September 2026) — `@cldmv/slothlet` peer floor raised to `>=3.20.0`; no runtime changes ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.2.md))
 - **v1.1.1** (September 2026) — CI-only: release-flow caller workflows synced to the current v4 templates ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.1.md))
 - **v1.1.0** (September 2026) — cross-vine event forwarding in both directions, gated by the emitter's own permissions ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.0.md))
-- **v1.0.2** (September 2026) — dev-only: `@cldmv/slothlet` dev pin `3.15.0` → `3.15.1` (peer floor unchanged) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.2.md))
-- **v1.0.1** (August 2026) — dev-only: `eslint` `10.9.0` → `10.9.1` ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.0.1.md))
 
 📚 **For complete version history and detailed release notes, see the [docs/changelog/](https://github.com/CLDMV/slothlet-vine/tree/master/docs/changelog/) folder.**
 
