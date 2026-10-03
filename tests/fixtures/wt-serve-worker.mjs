@@ -1,17 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/fixtures/wt-serve-worker.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:21-07:00 (1790968821)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The SERVE side of the worker-threads e2e, running inside a real `worker_threads.Worker`. It boots a
- * genuine slothlet instance from a fixture api (sync/async/throwing/slow leaves) and serves it over
- * the child-side channel wrapping `parentPort`. The grow side lives on the main thread; together they
- * exercise the transport across a real thread boundary.
- *
- * `workerData.base` picks the served api directory (default: the shared `serve-api` fixtures);
- * `workerData.serveOptions` is forwarded to `serve()` so a test can filter the surface. `serve()`
- * publishes the surface frame immediately — the readiness signal the grow side awaits — after which
- * the worker stays alive answering calls until the parent terminates it or closes the link.
  */
+
 import { workerData } from "node:worker_threads";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

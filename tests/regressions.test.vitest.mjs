@@ -1,47 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/regressions.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:22-07:00 (1790968822)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * REGRESSION FILE. Every test here started life in an adversarial review as its own inverse: a
- * green assertion that a DEFECT was present. Each one is now written the right way round and pins
- * the FIXED behaviour, so a re-introduction of the original bug fails here rather than shipping.
- *
- * The numbering is the review's, kept deliberately so a finding can be traced from report to test:
- *
- *  1. `link.close()`'s per-path fallback is OWNERSHIP-scoped — a local module that legitimately took
- *     a vine path over (`forceOverwrite`, its own moduleID) survives the teardown intact.
- *  2. `link.leaves` lists only paths actually mounted: a collided path is reported on `collisions`,
- *     never added, and the local incumbent keeps answering there — during the link and after it.
- *  3. A far side cannot impersonate a vine link-state error: a remote `code` in the reserved `VINE_*`
- *     namespace is remapped to `VINE_REMOTE`, with the far side's spelling kept on `.remoteCode`.
- *  4. A leaf whose EXPORT name is outside the ASCII alphabet (`export function café()`) is served,
- *     mounted and callable end to end; leaves a serve declines are reported on `serving.excluded`.
- *  5. Data-only is enforced on RETURN values too: a leaf returning a function is refused serve-side
- *     with `VINE_DATA_ONLY` instead of handing the caller a live closure over a by-reference
- *     transport (and failing as an opaque clone error over a cloning one).
- *  6. Answering a call does not corrupt the served instance's own leaf records (the `Reflect.apply`
- *     dispatch) — found while verifying 4 and 5.
- *  8. The minors: mounting stops when the far side dies mid-mount; `handshakeMs` has explicit
- *     semantics for nonsense values; a hostile error object settles the call it belongs to; and
- *     `close()` releases the receive closure.
- *  9. `serve()` enforces data-only on ARGUMENTS received off the wire too, not only return values —
- *     a frame built directly against a by-reference channel (bypassing `vineStub`) could otherwise
- *     hand a live function to the local leaf.
- *  10. `grow()`'s own channel registrations — `onMessage`, and `onClose` when the transport offers
- *      one — are released on every exit, not only a successful `close()`: a handshake that fails
- *      (budget expiry, or the far side gone before the surface arrives) never returns a `link` a
- *      caller could close, so the failure path has to be the release.
- *  11. `transport/process`'s `close()` tolerates a wrapped object that doesn't implement
- *      `removeListener`/`off` — `createParentChannel`'s `proc` param is documented as
- *      test-double-friendly and is only validated for `send`/`on`, so a minimal fake must not crash
- *      `close()`.
- *  12. Two more retention gaps in the same family as 10: (a) `grow()` only released its channel
- *      registrations from `close()` and a failed handshake — not when the far side goes gone AFTER
- *      the link is already established, which never calls `close()` on its own; (b)
- *      `transport/websocket`'s pre-open send backlog was cleared only by a local `close()`, not when
- *      the socket itself reports death (`notifyClose`), so a queue that never got to flush stayed
- *      retained indefinitely on a channel already known to be gone.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,11 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/inbox.test.vitest.mjs
+ *	@Date: 2026-09-28T03:15:48+00:00 (1790565348)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:22-07:00 (1790968822)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The pre-handler inbox shared by the built-in port/socket transports (CLDMV/slothlet-vine#41): a
- * frame the transport receives before the core has registered its handler is queued, and replayed —
- * in arrival order, ahead of anything newer — once a handler exists.
  */
+
 import { describe, it, expect } from "vitest";
 import { createInbox } from "../src/lib/inbox.mjs";
 

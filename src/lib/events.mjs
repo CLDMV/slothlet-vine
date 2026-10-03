@@ -1,40 +1,22 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/lib/events.mjs
+ *	@Date: 2026-09-20T23:09:59-07:00 (1789970999)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Symmetric event forwarding for ONE end of a vine. Both ends of a link carry an identical copy of
- * this: cross-vine event delivery is bidirectional, because the two linked instances are copies of the
- * same api (per-leaf stubs mounted at identical paths) and therefore hold the SAME event permissions.
- * An event fired in either instance reaches subscribers in the other as if it were one api.
- *
- * ## The one rule (slothlet's, not the vine's)
- *
- * slothlet gates SUBSCRIBERS, never emitters — an emit is open; each subscriber is resolved to one of
- * three delivery levels: `deny` (nothing), `notify` (a trigger, no payload), `allow` (trigger +
- * payload). The vine never invents a level or gates who may emit. It adds exactly one boundary rule:
- * **a subscriber only ever receives what its level allows, and nothing more than that is ever put on a
- * wire heading toward it.** Because the permissions are identical in every instance, the EMITTING side
- * can resolve any subscriber — local or across the vine — and send each remote one only what its level
- * permits, so a `notify` subscriber's payload never crosses. Whichever side resolves it gets the same
- * answer, so no trust flag, no authority handoff, no emit policy is needed.
- *
- * ## Two halves, both on every end
- *
- * - **server half** — a far `sub` for one of THIS instance's events: resolve the far subscriber's level
- *   HERE against this instance's rules, ack it (so a downgrade/denial is a catchable result, not a
- *   silent absence), host-subscribe, and forward each emit cut to that level — re-resolved per emit so a
- *   live rule change is honoured. Keyed by the FAR side's `subId` in {@link incoming}.
- * - **subscriber half** — {@link subscribe} sends a `sub` for a FAR event (carrying this subscriber's
- *   own `api.slothlet.caller()` identity, never one asserted for someone else) and delivers the far
- *   `event` frames to a local listener. Keyed by OUR `subId` in {@link outgoing}.
- *
- * The two ends never collide: each draws its outgoing `subId`s from its own nonce, and frames are routed
- * by TYPE (`sub`/`unsub` → server half, `sub-ack`/`event` → subscriber half), so the same four frames
- * flow both ways over one channel.
  */
+
 import { CODES, VineError } from "./errors.mjs";
 import { SUB_LEVELS, eventFrame, findFunctionArg, subAckFrame, subFrame, unsubFrame } from "./frame.mjs";
 import { PendingTable, makeNonce } from "./link.mjs";
+import { isNarrowingHint, narrowest } from "./principal.mjs";
 
 /**
  * Build the event-forwarding half of one vine end.
@@ -45,9 +27,11 @@ import { PendingTable, makeNonce } from "./link.mjs";
  *   arrives settles `VINE_BUDGET`).
  * @param {() => ("gone"|"closed"|null)} params.ended - The end's terminal state, so a subscribe made
  *   after teardown fails loudly and a forward after teardown is dropped. `serve` has no `gone`.
+ * @param {import("./principal.mjs").BoundPrincipal|null} [params.principal] - The channel principal this
+ *   end bound (see the file header), or `null` / absent for the v1 trusted-transport behaviour.
  * @returns {{ subscribe: Function, handleFrame: (frame: object) => void, teardown: (opts: {sendUnsubs: boolean}) => void }}
  */
-export function createEventForwarder({ api, channel, budgetMs, ended }) {
+export function createEventForwarder({ api, channel, budgetMs, ended, principal = null }) {
 	const eventApi = api.slothlet?.event;
 	// Serving a subscription (resolve + host-subscribe) needs the trusted-side resolver + subscribe
 	// surface (slothlet ≥ 3.18.0). Without them a far `sub` is refused with a catchable `deny` rather
@@ -61,6 +45,12 @@ export function createEventForwarder({ api, channel, budgetMs, ended }) {
 	 * @type {Map<string, { off: () => void, event: string }>}
 	 */
 	const incoming = new Map();
+	/**
+	 * Far `sub`s whose principal-bound level is still being resolved (that resolution is async — see
+	 * {@link levelAs}). A repeated subId in that window must not register a second listener either.
+	 * @type {Set<string>}
+	 */
+	const settling = new Set();
 
 	/** Settles each OUTGOING subscribe handshake exactly once (resolving with the granted level). */
 	const acks = new PendingTable(makeNonce());
@@ -98,17 +88,40 @@ export function createEventForwarder({ api, channel, budgetMs, ended }) {
 	function accept(frame) {
 		const { subId, event, subscriberPath } = frame;
 		// A repeated subId (a buggy or hostile far side) must never leak a second live listener.
-		if (incoming.has(subId)) return;
+		if (incoming.has(subId) || settling.has(subId)) return;
 		if (!canServe) {
 			sendAck(subId, "deny");
 			return;
 		}
-		let level;
-		try {
-			level = eventApi.resolveLevel(subscriberPath, event);
-		} catch {
-			level = "deny";
+		if (principal) {
+			// Principal-bound resolution is async (`context.run` returns a Promise on the installed
+			// slothlet); the ack waits for it. `levelAs` never rejects, so this chain cannot either.
+			settling.add(subId);
+			void levelAs(subscriberPath, event).then((level) => {
+				// Membership is the cancellation signal: a far `unsub` (or teardown) that landed while the
+				// level was resolving already removed this subId, so nothing is acked or registered. The
+				// end may also have been torn down meanwhile; a listener registered now would outlive the
+				// registry that drops it. The far side is gone or told anyway.
+				if (!settling.delete(subId) || ended()) return;
+				admit(subId, event, level, () => levelAs(subscriberPath, event));
+			});
+			return;
 		}
+		admit(subId, event, levelOf(subscriberPath, event), () => levelOf(subscriberPath, event));
+	}
+
+	/**
+	 * Ack a resolved level and, unless denied, host-subscribe and forward each emit cut to the level
+	 * re-resolved AT THAT EMIT — so a rule change that downgrades it (allow → notify → deny) is honoured
+	 * live, and a `notify` subscriber's payload never leaves this instance.
+	 * @param {string} subId - The far side's subscription id.
+	 * @param {string} event - The event name.
+	 * @param {unknown} level - The level resolved at subscribe (anything unknown is `deny`).
+	 * @param {() => (string|Promise<string>)} current - Re-resolves the level per emit. Never throws or
+	 *   rejects; answers `deny` for any failure.
+	 * @returns {void}
+	 */
+	function admit(subId, event, level, current) {
 		if (!SUB_LEVELS.has(level)) level = "deny";
 		sendAck(subId, level);
 		if (level === "deny") return;
@@ -117,18 +130,9 @@ export function createEventForwarder({ api, channel, budgetMs, ended }) {
 		try {
 			({ off } = eventApi.on(event, (payload, meta) => {
 				if (ended() || !incoming.has(subId)) return;
-				let current;
-				try {
-					current = eventApi.resolveLevel(subscriberPath, event);
-				} catch {
-					current = "deny";
-				}
-				if (current === "deny") return; // revoked since subscribe — forward nothing
-				// Data-only, the half only this side can enforce: a function anywhere in the payload cannot
-				// cross (over a by-reference transport it would hand the far side a live closure over this
-				// scope), so an `allow` delivery whose payload hides a function degrades to trigger-only.
-				const withPayload = current === "allow" && findFunctionArg([payload]) === null;
-				trySend(eventFrame(subId, meta, withPayload, payload));
+				const resolved = current();
+				if (typeof resolved?.then === "function") void resolved.then((value) => forward(subId, meta, payload, value));
+				else forward(subId, meta, payload, resolved);
 			}));
 		} catch {
 			// The instance refused the host subscription (a lockdown that denies even the host). Nothing
@@ -139,11 +143,76 @@ export function createEventForwarder({ api, channel, budgetMs, ended }) {
 	}
 
 	/**
+	 * Forward one emit to a far subscriber at its CURRENT level. Re-checks the registry, because a
+	 * principal-bound level arrives asynchronously and the subscription may have been dropped meanwhile.
+	 * @param {string} subId - The subscription being delivered to.
+	 * @param {{ event: string, at: number, instanceID: string }} meta - The trigger envelope.
+	 * @param {unknown} payload - The domain payload.
+	 * @param {string} current - The level re-resolved for this emit.
+	 * @returns {void}
+	 */
+	function forward(subId, meta, payload, current) {
+		if (ended() || !incoming.has(subId)) return;
+		if (current === "deny") return; // revoked since subscribe — forward nothing
+		// Data-only, the half only this side can enforce: a function anywhere in the payload cannot
+		// cross (over a by-reference transport it would hand the far side a live closure over this
+		// scope), so an `allow` delivery whose payload hides a function degrades to trigger-only.
+		const withPayload = current === "allow" && findFunctionArg([payload]) === null;
+		trySend(eventFrame(subId, meta, withPayload, payload));
+	}
+
+	/**
+	 * The v1 (no principal) resolution: the far side's asserted identity, resolved as-is on this
+	 * instance. A throw is `deny`.
+	 * @param {string|null} subscriberPath - The `sub` frame's asserted identity (`null` = host).
+	 * @param {string} event - The event name.
+	 * @returns {string} The level (`deny` on failure).
+	 */
+	function levelOf(subscriberPath, event) {
+		try {
+			return eventApi.resolveLevel(subscriberPath, event);
+		} catch {
+			return "deny";
+		}
+	}
+
+	/**
+	 * The principal-bound resolution (#33): the channel's OWN level for the event, resolved as
+	 * `principal.path` — `null` from the far side is the channel, never the host — narrowed by the far
+	 * `subscriberPath` only when that hint sits at/under the principal's path (`min` of the two levels;
+	 * a claim anywhere else is ignored). Runs inside `context.run(principal.context)` when a context is
+	 * bound, so conditional event rules see the actor; a nested `run` shallow-merges the principal's
+	 * keys over the emitter's scope, which is the intended precedence (the channel's identity wins over
+	 * whatever the emitter happened to be doing). Never rejects: an unresolvable principal, a `run` that
+	 * fails, a `resolveLevel` that throws, or an unknown answer are each `deny`.
+	 * @param {string|null} subscriberPath - The `sub` frame's asserted identity.
+	 * @param {string} event - The event name.
+	 * @returns {Promise<string>} The effective level.
+	 */
+	async function levelAs(subscriberPath, event) {
+		try {
+			const who = principal.resolve();
+			if (!who) return "deny";
+			const compute = () => {
+				const base = eventApi.resolveLevel(who.path, event);
+				return isNarrowingHint(subscriberPath, who.path) ? narrowest(base, eventApi.resolveLevel(subscriberPath, event)) : base;
+			};
+			const level = who.context ? await api.slothlet.context.run(who.context, compute) : compute();
+			return SUB_LEVELS.has(level) ? level : "deny";
+		} catch {
+			return "deny";
+		}
+	}
+
+	/**
 	 * Tear down one incoming subscription — a far `unsub`, or {@link teardown}.
 	 * @param {string} subId - The subscription id (drawn from the FAR side's space).
 	 * @returns {void}
 	 */
 	function drop(subId) {
+		// A subscription still resolving its principal-bound level is cancelled by removing it from
+		// `settling`; accept()'s continuation sees that and registers nothing.
+		if (settling.delete(subId)) return;
 		const sub = incoming.get(subId);
 		if (!sub) return;
 		incoming.delete(subId);
@@ -296,6 +365,7 @@ export function createEventForwarder({ api, channel, budgetMs, ended }) {
 			}
 		}
 		incoming.clear();
+		settling.clear();
 		if (sendUnsubs) for (const subId of outgoing.keys()) trySend(unsubFrame(subId));
 		outgoing.clear();
 		acks.settleAll(

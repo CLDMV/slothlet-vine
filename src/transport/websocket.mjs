@@ -1,68 +1,16 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/transport/websocket.mjs
+ *	@Date: 2026-08-23T21:30:12-07:00 (1787545812)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:14-07:00 (1790968814)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The websocket transport — a {@link Channel} over a single `ws` WebSocket. This is the one BYTE
- * transport in v1: the medium carries strings, so the channel owns its own encode/decode
- * (`capabilities.codec: "json"`) rather than relying on structured clone the way the postMessage
- * family does.
- *
- * ## The v1 JSON codec — and what it degrades (honest limitations)
- *
- * Frames cross as `JSON.stringify(frame)` and are rebuilt with `JSON.parse`. That is faithful for the
- * data-only, plain-object frame shapes the vine actually sends, but JSON is lossy for richer values a
- * leaf's args/return might contain:
- *
- * - `Date` → an ISO **string** (not a `Date`); the grow side receives the string.
- * - `Map` / `Set` → `{}` (their entries are lost entirely).
- * - `Symbol` → dropped: a symbol-valued property vanishes, a symbol array element becomes `null`.
- * - `undefined` object properties and array holes → dropped / `null`.
- * - `TypedArray` / `ArrayBuffer` / `Buffer` → a plain object of indices, not the buffer.
- *
- * Those are lossy-but-VALID degradations — the frame still crosses. A `BigInt` is different: it
- * THROWS in `JSON.stringify`, so the codec cannot encode the frame at all. That is a per-call REFUSAL
- * (not a degradation and not a dead socket): `send()` re-raises it and the core settles just that call
- * `VINE_BAD_FRAME`, consistent with the structured-clone transports rejecting an un-cloneable frame —
- * the link and every other in-flight call stay alive.
- *
- * These are inherent to `codec: "json"`; a richer byte codec is a future capability
- * (see `docs/DESIGN.md` § Non-goals). Consumers who need `Date`/`Map`/`Set` fidelity should use a
- * structured-clone transport (postMessage family) or wait for a richer codec.
- *
- * ## Capabilities & the choices behind them
- *
- * `{ structuredClone: false, codec: "json", buffersUntilHandler: true }`.
- *
- * - **`buffersUntilHandler: true`** — this module attaches its `"message"` listener at
- *   {@link createChannel} time, and a message that arrives before `onMessage` has a handler is
- *   decoded and QUEUED, then replayed in order once a handler is registered (see
- *   `src/lib/inbox.mjs`). A consumer may therefore create the channel, `await` something, and only
- *   then call `grow()` without losing the far side's `surface` frame (CLDMV/slothlet-vine#41). What
- *   it cannot recover is a message that reached the socket before `createChannel()` ran: `ws` emits
- *   `"message"` to whatever listeners exist at the time and keeps no queue, so wrap a socket in the
- *   same tick it is created (a client `new WebSocket(url)`, or the socket handed to a server
- *   `"connection"` listener) — before any `await`.
- * - **Send before `OPEN` is BUFFERED, then flushed on `open`.** A client `new WebSocket(url)` connects
- *   asynchronously, so `send()` may be called on a `CONNECTING` socket; queuing until `open` (rather
- *   than erroring) is the faithful choice for a socket that simply is not ready yet. A send on a
- *   `CLOSING`/`CLOSED` socket is a silent no-op — the core is required to tolerate frames crossing a
- *   close, so the transport must not turn that race into a throw.
- * - **`close()` CLOSES the underlying socket** (not merely detaching listeners). A `ws` socket is 1:1
- *   with its channel, so a socket with no channel is dead weight; more decisively, the Channel
- *   conformance suite asserts that closing one end fires the OTHER end's `onClose`, and over a real
- *   socket that is only observable if `close()` actually closes the socket. This is the one place the
- *   websocket transport diverges from the "detach only" option the port-wrapping transports may take.
- * - **A locally-initiated `close()` does not fire this end's own `onClose`.** `onClose` is the
- *   far-side-death notification (mirroring loopback); only the far end's close/error, or a network
- *   drop, reports through it.
- *
- * ## The optional `ws` peer dependency
- *
- * `ws` is an OPTIONAL peer dependency, imported by NOTHING in the core — only here, and only lazily.
- * {@link createChannel} wraps a socket the caller already constructed, so it needs no import (a live
- * `ws` socket is itself proof `ws` is installed). {@link connect} is the one entry point that
- * CONSTRUCTS a client socket, so it is the one that imports `ws` — and it is where a clear
- * "install the optional peer dependency 'ws'" error is thrown when the import fails.
  */
 
 import { createInbox } from "../lib/inbox.mjs";

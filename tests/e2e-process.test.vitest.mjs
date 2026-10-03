@@ -1,29 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-process.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The process (child_process IPC) transport: the shared Channel conformance suite PLUS the full e2e
- * bar from `docs/DESIGN.md`, the latter over a REAL forked child process.
- *
- * ## Two boundaries, on purpose
- *
- * - **Conformance** runs against an IN-MEMORY duplex that mimics the exact surface the transport
- *   consumes — `send(msg, cb)`, `on("message"|"exit"|"disconnect"|"error")`, `connected`,
- *   `disconnect()` — with structured-clone delivery on `setImmediate` (advanced-serialization
- *   fidelity, asynchronous like a real IPC hop). Forking a fresh child for each of the ~15 conformance
- *   cases would be needlessly heavy and slow, and the conformance suite tests the CHANNEL contract, not
- *   the OS boundary; the fake reproduces the surface faithfully, so the contract is exercised honestly.
- *   Both fake ends are wrapped with `createChannel` (the parent-side endpoint) so `close()`/`onClose`
- *   have their disconnecting semantics.
- * - **The 6-point e2e** uses a REAL `fork(...)` with `{ serialization: "advanced" }`: the serve side
- *   boots a real slothlet instance in the child (`tests/fixtures/proc-serve-child.mjs`) and the grow
- *   side runs in this process. Nothing here is faked — killing the child is a real SIGTERM, and the
- *   parent detects the death over the real IPC channel.
- *
- * The child-side endpoint (`createParentChannel`) is covered directly by a specifics test against the
- * fake (attaching it to the real vitest IPC would corrupt vitest's own result channel) and end-to-end
- * inside the real forked child.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

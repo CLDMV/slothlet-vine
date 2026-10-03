@@ -1,10 +1,16 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/fixtures/regression-api/factory.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:19-07:00 (1790968819)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Leaves that probe the data-only rule from the serving side, in both directions: RETURN values (a
- * bare function, a function buried in an object graph, and the data-only control that must still
- * cross untouched) and a call ARGUMENT received raw off the wire.
  */
 
 /**

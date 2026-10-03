@@ -1,17 +1,16 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/lib/errors.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The vine error taxonomy and its wire form. Every failure a vine produces on its own account is a
- * {@link VineError} carrying a stable `.code` from {@link CODES}; a failure produced by the FAR
- * side's application code crosses as data and is re-thrown locally as a {@link VineRemoteError}
- * that keeps the original `name` / `message` / `code` and carries the far stack as `.remoteStack`.
- *
- * The one thing a far side may NOT dictate is a vine code: a remote `code` in the reserved `VINE_*`
- * namespace is remapped to `VINE_REMOTE` (original on `.remoteCode`), so no peer can make a
- * consumer's `err.code === CODES.CLOSED` link-state branch fire. See {@link VineRemoteError}.
- *
- * See `docs/DESIGN.md` § "API surface" for the normative code list.
  */
 
 /**
@@ -32,6 +31,12 @@ export const CODES = Object.freeze({
 	BAD_FRAME: "VINE_BAD_FRAME",
 	/** A call named a path that is not in the served surface (re-validated serve-side every call). */
 	NO_LEAF: "VINE_NO_LEAF",
+	/**
+	 * The serving side's channel principal is not permitted to call this path — slothlet's rules said
+	 * no (or could not be asked), and the leaf was never invoked. Produced ONLY by a `serve()` that
+	 * bound a `principal`; a trusted-transport serve (no principal) never answers it.
+	 */
+	DENIED: "VINE_DENIED",
 	/**
 	 * `.code` for a remote application error that carried none of its own — and for one whose code
 	 * was in the reserved `VINE_*` namespace, which is never adopted from the wire (the far side's

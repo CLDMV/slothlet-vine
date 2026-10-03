@@ -1,45 +1,23 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /src/grow.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The growing end of a vine: take the far side's leaf manifest and mount one forwarding stub per
- * leaf at the IDENTICAL dotted path in the local instance, so a caller writing
- * `self.exts.pdfViewer.open()` cannot tell which process the implementation lives in.
- *
- * ## Why identical paths, and what that buys (probed against @cldmv/slothlet 3.14.0)
- *
- * Stubs are mounted one leaf at a time with the BARE-FUNCTION form,
- * `api.slothlet.api.add(fullPath, stub, { moduleID })`, all sharing ONE moduleID per link:
- *
- * - the recorded permission identity is then the exact path — a rule targeting `far.ns.leaf`
- *   matched a stub mounted that way, verified — which is the whole point: **slothlet's own
- *   permission system gates a stub exactly as it gates a real leaf, and a denied call never runs
- *   the stub body, so it never reaches the wire**;
- * - many per-leaf adds may share one moduleID, and a single `remove(moduleID)` unmounts all of them
- *   (and prunes the namespaces they created) — as long as the id is hyphenated, which is a real and
- *   silent trap documented at the `moduleID` line below;
- * - `remove()` of an id that was never mounted resolves quietly, so close is safe to call twice.
- *
- * Two behaviours a consumer should know about, both verified rather than assumed:
- *
- * - **Permission gating covers module→leaf calls, not host→leaf calls.** A call made through the
- *   bound object `slothlet()` returned carries the host's own standing and is never checked; that
- *   is slothlet's documented host carve-out, not a vine gap. Rules bite when a MODULE calls the
- *   stub (`self.far.ns.leaf()` → `PERMISSION_DENIED`).
- * - **A path already occupied locally is not overwritten.** slothlet's collision handling keeps the
- *   incumbent and the add is a silent no-op unless `forceOverwrite` is passed — which a vine never
- *   does, because clobbering local reality with a remote's idea of the tree is not a trade worth
- *   making. An occupied path is therefore not mounted at all: it is reported on `link.collisions`
- *   and stays off `link.leaves`, so the link never claims to forward a path the incumbent answers.
- *
- * The same respect for local reality governs teardown, where it is easy to get backwards: a path the
- * vine mounted may have been taken over since, and `close()` removes only what the link still OWNS.
- * See the note on `close()`.
  */
+
 import { CODES, VineError, fromWire } from "./lib/errors.mjs";
 import { callFrame, findFunctionArg, isSafePath, parseFrame } from "./lib/frame.mjs";
 import { createEventForwarder } from "./lib/events.mjs";
 import { PendingTable, assertApi, assertChannel, makeNonce, onCloseSafe } from "./lib/link.mjs";
+import { assertPrincipalSupport, bindPrincipal } from "./lib/principal.mjs";
 
 /** Default per-call settle budget, in ms. @type {number} */
 export const DEFAULT_BUDGET_MS = 30_000;
@@ -66,13 +44,26 @@ export const DEFAULT_BUDGET_MS = 30_000;
  *   have to trust that it did. Same fail-closed reading as
  *   {@link import("./serve.mjs").serve}: an array with no usable prefix mounts nothing; a non-array
  *   value is ignored.
+ * @param {string|{ path: string, context?: object }|(() => string|{ path: string, context?: object })} [options.principal] -
+ *   The **channel principal** (#33) for the EVENT SERVER-HALF of this end only. A grow end answers no
+ *   `call` frames (a stray one is ignored), but it does answer the far side's `sub` frames for THIS
+ *   instance's events — and the trusted end of a channel is not always the serving end (a host that
+ *   grows leaves out of an untrusted worker plugin still serves that plugin's subscriptions). With a
+ *   principal, every far `sub` is resolved as `principal.path` (inside `context.run(principal.context)`
+ *   when a context is given), the far `subscriberPath` can only NARROW that level, and `null` no
+ *   longer means "host". Same shapes and fail-closed rules as `serve()`'s. Only the event-side
+ *   preconditions apply here — the permission system must be enabled and `api.slothlet.event.resolveLevel`
+ *   must exist (plus a working `context.run` when a static principal carries a `context`);
+ *   `permissions.global.checkCall` is NOT required, because a grow answers no calls. Omit it for a
+ *   trusted transport: nothing changes.
  * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], close: () => Promise<void>, closed: Promise<{reason: string, info?: object}> }>}
  *   The live link. The three path lists are DISJOINT and together account for every leaf the far
  *   side published: `leaves` are the paths actually mounted and forwarding; `skipped` are far leaves
  *   refused locally (unsafe path, outside `paths`, rejected by `add()`, or published after the link
  *   had already ended); `collisions` are paths the local instance already occupied, which are NOT
  *   mounted — the incumbent keeps answering there and the far leaf is unreachable through this link.
- * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel.
+ * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel — or, with a
+ *   `principal`, when it is malformed or the instance cannot enforce it (see `options.principal`).
  * @throws {VineError} `VINE_GONE` when the channel closes before the surface arrives, `VINE_BUDGET`
  *   when the handshake budget elapses first.
  *
@@ -84,6 +75,17 @@ export const DEFAULT_BUDGET_MS = 30_000;
 export async function grow(api, channel, options = {}) {
 	assertChannel(channel, "grow");
 	assertApi(api, "grow", ["add", "remove"]);
+	// The channel principal (#33) for this end's event server-half — see lib/principal.mjs. A grow
+	// answers no calls, so only the event-side preconditions are checked; `context.run` is probed only
+	// when a static principal actually carries a context (a resolver's answer is per frame, and a
+	// `run` that fails there denies that frame).
+	const principal = bindPrincipal(options.principal, "grow");
+	if (principal)
+		await assertPrincipalSupport(
+			api,
+			{ run: typeof principal.declared !== "function" && principal.declared.context !== undefined },
+			"grow"
+		);
 
 	const budgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0 ? Number(options.budgetMs) : DEFAULT_BUDGET_MS;
 	const handshakeMs = handshakeBudget(options.handshakeMs, budgetMs);
@@ -110,6 +112,7 @@ export async function grow(api, channel, options = {}) {
 		api,
 		channel,
 		budgetMs,
+		principal,
 		ended: () => (state.gone ? "gone" : state.closed ? "closed" : null)
 	});
 

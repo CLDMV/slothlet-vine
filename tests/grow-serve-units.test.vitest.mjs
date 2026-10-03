@@ -1,16 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/grow-serve-units.test.vitest.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:21-07:00 (1790968821)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Unit-level coverage of the failure paths `grow` and `serve` are built around but which a healthy
- * loopback e2e never reaches: a transport whose `send` throws, an `add()` slothlet refuses, a
- * `remove()` that silently unmounts nothing, a `leaves()` that throws for a stale moduleID, a leaf
- * that vanished between publication and invocation, and a synchronous transport that delivers the
- * surface frame during registration.
- *
- * These use FAKE api and channel objects on purpose — the point is to drive states a real slothlet
- * instance and a healthy loopback pair cannot be made to produce on demand.
  */
+
 import { describe, it, expect, vi } from "vitest";
 import { grow } from "../src/grow.mjs";
 import { serve } from "../src/serve.mjs";

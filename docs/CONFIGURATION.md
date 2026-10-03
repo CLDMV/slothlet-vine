@@ -13,15 +13,18 @@ import { grow, serve } from "@cldmv/slothlet-vine";
 const serving = await serve(api, channel, {
 	paths: ["exts"], // dotted prefixes to serve; omit for every callable leaf of the base load
 	modules: ["ext-1"], // extra moduleIDs to union in (runtime add() mounts leaves() alone can't see)
-	budgetMs: 30_000 // accepted, IGNORED in v1 — documented for symmetry with grow()
+	budgetMs: 30_000, // accepted, IGNORED in v1 — documented for symmetry with grow()
+	principal: { path: "remote.renderer", context: { actor } }, // OPTIONAL — the channel principal for an untrusted peer
+	around: ({ callId, path, args, principal, invoke }) => invoke() // OPTIONAL — the host's own scope around each accepted call
 });
-// serving: { leaves: string[], excluded: string[], close(): void }
+// serving: { leaves: string[], excluded: string[], principal: object|Function|null, close(): void }
 
 // The side that MOUNTS the far side's leaves into its own tree, at identical dotted paths.
 const link = await grow(api, channel, {
 	budgetMs: 30_000, // per-call settle budget; exceeded → VINE_BUDGET
 	handshakeMs: 30_000, // deadline for the surface frame itself; defaults to budgetMs
-	paths: ["exts"] // dotted prefixes to mount (grow-side mirror of serve's own paths filter)
+	paths: ["exts"], // dotted prefixes to mount (grow-side mirror of serve's own paths filter)
+	principal: "remote.plugin" // OPTIONAL — the channel principal for this end's EVENT server-half only
 });
 // link: { id, leaves: string[], skipped: string[], collisions: string[], close(): Promise<void>, closed: Promise<{reason}> }
 ```
@@ -59,6 +62,65 @@ await serve(api, channel, { modules: ["driver-opensearch"] });
 **Type**: `number`
 
 Accepted and **ignored** in v1 — the budget is a grow-side concern (see `grow()`'s own `budgetMs` below). Documented on `serve()` purely for symmetry with the design sketch; passing it does nothing.
+
+### `principal`
+
+**Type**: `string | { path: string, context?: object } | () => (string | { path, context? })`
+**Default**: none — the trusted-transport behaviour
+
+The **channel principal**: the caller identity this serve binds to the channel, taken from the transport's own authentication (a ws upgrade, a token) and never from a frame. With one set, every `call` frame is judged by slothlet's rules engine as `principal.path` calling the leaf with the frame's `args`, inside a context scope carrying `principal.context` with every top-level key write-protected, and a denial is answered [`VINE_DENIED`](ERRORS.md#vine_-codes) without the leaf ever running; every `sub` frame is resolved as the principal, and the far side's own `subscriberPath` can only narrow that level (`null` no longer means "host"). Without it, nothing changes.
+
+- A **string** is `{ path }` — the common worker/Electron case: `principal: "remote.renderer"`.
+- An **object** is `{ path, context? }`. `path` must pass the same path guard as a leaf (no `**`, no empty segment, not under `slothlet`); `context`, when given, must be a plain object (it is deep-cloned per scope, and only plain data gets full-depth write protection).
+- A **function** is called synchronously per frame and must answer either form — so a host can rotate identity on re-auth without re-serving. A throw or any other answer denies that one frame (`VINE_DENIED` for a call, a `deny` ack for a subscription). It is deliberately not async: transport auth happens at the handshake.
+
+`serve()` throws a `TypeError` — before publishing anything — when `around` is given and is not a function, when the principal is malformed, when the instance's permission system is not enforcing (`api.slothlet.permissions.control.enabled !== true`), when `api.slothlet.event.resolveLevel` is missing, when `api.slothlet.permissions.global.checkCall` is missing (**the call half requires `@cldmv/slothlet` ≥ 3.22.0, the peer floor**), or when `api.slothlet.context.scope` does not work (a `scope: false` instance). A principal on an instance that cannot enforce it would gate nothing, so it is refused rather than degraded. A principal-bearing serve must run on the async (Node) runtime, not `runtime: "live"`.
+
+```javascript
+wss.on("connection", async (socket, request) => {
+	const user = await authenticate(request); // nothing the page can forge
+	await serve(api, createChannel(socket), {
+		paths: ["host", "project"],
+		principal: { path: user.admin ? "remote.admin" : "remote.renderer", context: { actor: { id: user.id, roles: user.roles } } }
+	});
+});
+```
+
+The full model — what a principal is and is not, the rule shapes, and the worked call and subscription tables — is in [PERMISSIONS.md → Serving to an untrusted peer](PERMISSIONS.md#serving-to-an-untrusted-peer-the-channel-principal).
+
+### `around`
+
+**Type:** `({ callId, path, args, principal, invoke }) => unknown` **Default:** none
+
+A per-call wrapper for the host's own scope around each call the vine has accepted: a transaction, a deadline, an audit record. It runs after every check the vine makes — the served-surface check (`VINE_NO_LEAF`), the principal gate (`VINE_DENIED`, inside the principal's context scope), and the args data-only check (`VINE_DATA_ONLY`) — so it never sees a frame the vine would have refused. Identity is not established here: that is [`principal`](#principal)'s job, and `around` decorates a call that is already authorized.
+
+| Field       | Meaning                                                                                                                                                                                                                                                                                                                |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `callId`    | The call's correlation id, as the grow side sent it — for tracing and deadlines.                                                                                                                                                                                                                                       |
+| `path`      | The served leaf path.                                                                                                                                                                                                                                                                                                  |
+| `args`      | A private copy of the call's arguments, for inspection. Changing it changes nothing `invoke()` passes.                                                                                                                                                                                                                 |
+| `principal` | The frozen `{ path, context? }` resolved for **this** frame (a function-form principal is resolved per frame), or `null` on a serve without a principal.                                                                                                                                                               |
+| `invoke`    | `() => Promise<unknown>` — runs the gated leaf with the call's original arguments. It takes no arguments (the call that was authorized is the call that runs) and may be called more than once; each call gets a fresh copy of the arguments as they arrived, so a retry never sees what a failed attempt did to them. |
+
+Whatever `around` returns is the call's result — the data-only return check applies to it exactly as to a leaf's own value, so a wrapper that returns a function is refused `VINE_DATA_ONLY`. Whatever it throws is the call's error, and reaches the grow side as a `VineRemoteError` carrying that error's own name, message and code. `around` may also answer without calling `invoke()` at all (a cached answer). With `around` set, a call's arguments must be structured-cloneable — they already must be to cross any real transport — and ones that are not answer `VINE_DATA_ONLY`.
+
+```javascript
+await serve(api, channel, {
+	principal: { path: "remote.renderer", context: { actor } },
+	around: async ({ callId, path, principal, invoke }) => {
+		// Retry the leaf on a write conflict, as one atomic action under the bound actor.
+		for (;;) {
+			try {
+				return await db.transaction(() => invoke());
+			} catch (err) {
+				if (!isWriteConflict(err)) throw err;
+			}
+		}
+	}
+});
+```
+
+`around` wraps calls only. Accepting a far subscription and forwarding an emit are not actions a host can make atomic or roll back, and per-subscriber policy is what conditional event rules and the principal's context are for.
 
 ---
 
@@ -102,17 +164,29 @@ Dotted prefixes to mount — the grow-side mirror of `serve()`'s own `paths`. Th
 const link = await grow(api, channel, { paths: ["exts"] });
 ```
 
+### `principal`
+
+**Type**: `string | { path: string, context?: object } | () => (string | { path, context? })`
+**Default**: none
+
+The channel principal for **this end's event server-half only**. A grow answers no `call` frames (a stray one is ignored), but it does answer the far side's `sub` frames for this instance's events — and the trusted end of a channel is not always the serving end: a host that grows leaves out of an untrusted worker plugin still serves that plugin's subscriptions to host events. With a principal, every far `sub` is resolved as `principal.path` (inside `context.run(principal.context)` when a context is given), the far `subscriberPath` can only narrow that level, and `null` no longer means "host". Same shapes and the same fail-closed rules as `serve()`'s; only the event-side preconditions apply — the permission system must be enforcing and `api.slothlet.event.resolveLevel` must exist (plus a working `context.run` when a static principal carries a `context`). `permissions.global.checkCall` is **not** required here.
+
+```javascript
+const link = await grow(hostApi, workerChannel, { principal: "remote.plugin" });
+```
+
 ---
 
 ## Return values
 
 ### `serving` (from `serve()`)
 
-| Field      | Type         | Meaning                                                                                                                                                                                          |
-| ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `leaves`   | `string[]`   | The dotted paths actually offered to the far side.                                                                                                                                               |
-| `excluded` | `string[]`   | Every callable leaf this serve declined to publish — refused by the path-safety guard or filtered out by `paths`. Namespace and data records are never candidates, so they aren't reported here. |
-| `close()`  | `() => void` | Stop answering `call` frames. Does **not** close the channel — a channel may outlive one serving, and one a consumer handed in is not this call's to tear down.                                  |
+| Field       | Type                         | Meaning                                                                                                                                                                                                                    |
+| ----------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `leaves`    | `string[]`                   | The dotted paths actually offered to the far side.                                                                                                                                                                         |
+| `excluded`  | `string[]`                   | Every callable leaf this serve declined to publish — refused by the path-safety guard or filtered out by `paths`. Namespace and data records are never candidates, so they aren't reported here.                           |
+| `principal` | `object \| Function \| null` | The channel principal this serve bound: the frozen, normalized `{ path, context? }` for the string / object forms, the resolver itself for the function form, or `null` when none was given. Diagnostics, like `excluded`. |
+| `close()`   | `() => void`                 | Stop answering `call` frames. Does **not** close the channel — a channel may outlive one serving, and one a consumer handed in is not this call's to tear down.                                                            |
 
 ### `link` (from `grow()`)
 

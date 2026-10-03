@@ -1,17 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/e2e-loopback-events-bidirectional.test.vitest.mjs
+ *	@Date: 2026-09-20T23:09:59-07:00 (1789970999)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * Cross-vine EVENT forwarding is BIDIRECTIONAL (#20). The two linked instances are copies of the same
- * api and hold the SAME event permissions, so an emit in EITHER instance reaches subscribers in the
- * other, gated by that emitter's own (identical) rules. This covers the direction the loopback e2e in
- * `e2e-loopback-events` does not: the GROW side emits and a SERVE-side subscriber receives — the same
- * resolve-then-send-only-allowed path, now running on the grow end too — plus both directions over one
- * link at once.
- *
- * Same slothlet floor as the other event e2e: same-process forwarding needs the cross-instance
- * caller-isolation fix (slothlet ≥ 3.18.1, CLDMV/slothlet#436), which applies in BOTH directions.
  */
+
 import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

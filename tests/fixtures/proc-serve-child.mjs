@@ -1,16 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/fixtures/proc-serve-child.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:18-07:00 (1790968818)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * The serve side of the process-transport e2e, running in a REAL forked child. Boots a slothlet
- * instance from the shared serve-api fixtures (sync `math.add`, async `tools.echo`/`tools.slow`,
- * throwing `tools.boom`, instrumented `tools.secret`/`tools.secretCallCount`) and serves it over the
- * child-side channel — `createParentChannel()` wrapping this process's IPC channel to its parent.
- *
- * The parent forks this file with `{ serialization: "advanced" }` and grows the far surface. After
- * `serve()` the open IPC channel keeps the child alive; it exits when the parent kills or disconnects
- * it (point 5 of the e2e bar kills it mid-call to prove real death detection).
  */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import slothlet from "@cldmv/slothlet";

@@ -1,12 +1,18 @@
 /**
+ *
  *	@Project: @cldmv/slothlet-vine
  *	@Filename: /tests/fixtures/events-api/events.mjs
+ *	@Date: 2026-09-20T23:09:59-07:00 (1789970999)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:17-07:00 (1790968817)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
- * A real MODULE that subscribes to a FAR event through the vine — used on BOTH sides of a link in the
- * bidirectional tests, since the two instances are copies of one api. `event.on` attributes the
- * subscription to `api.slothlet.caller()` (this module's identity), the same on the grow link's
- * `event` surface and the serve handle's `event` surface, so one fixture drives either direction.
  */
+
 import { self } from "@cldmv/slothlet/runtime";
 
 const received = [];
