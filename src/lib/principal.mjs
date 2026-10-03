@@ -115,8 +115,8 @@ export function bindPrincipal(option, who) {
  *   modules; that is the host's own act and is documented, not detected per frame.
  * - `api.slothlet.event.resolveLevel` must exist (slothlet ≥ 3.18.0): the event half resolves the
  *   principal's level through it, and without it every far `sub` would be refused anyway.
- * - `calls` only (serve): `api.slothlet.permissions.global.checkCall` must exist — the slothlet
- *   release carrying CLDMV/slothlet#508. Throwing rather than degrading, because degrading a security
+ * - `calls` only (serve): `api.slothlet.permissions.global.checkCall` must exist — added in
+ *   @cldmv/slothlet 3.22.0 (CLDMV/slothlet#508). Throwing rather than degrading, because degrading a security
  *   gate silently is the hole #33 describes.
  * - `scope` only (serve): `api.slothlet.context.scope` must WORK. On 3.20.0 an instance created with
  *   `scope: false` still exposes `context.scope` as a function — it rejects with `SCOPE_DISABLED` when
@@ -148,7 +148,7 @@ export async function assertPrincipalSupport(api, needs, who) {
 	if (needs.calls && typeof api.slothlet?.permissions?.global?.checkCall !== "function") {
 		throw new TypeError(
 			`@cldmv/slothlet-vine: ${who}() with a principal needs api.slothlet.permissions.global.checkCall() — ` +
-				`the slothlet release carrying CLDMV/slothlet#508 is required to gate calls for a channel principal`
+				`@cldmv/slothlet ≥ 3.22.0 is required to gate calls for a channel principal`
 		);
 	}
 	if (needs.scope) await probe(api, who, "scope", () => api.slothlet.context.scope({ context: {}, fn: () => true }));

@@ -36,17 +36,6 @@ const probe = await slothlet({ base: PRINCIPAL_DIR, silent: true, permissions: {
 const hasCheckCall = typeof probe.slothlet?.permissions?.global?.checkCall === "function";
 await probe.slothlet.shutdown();
 
-/**
- * The actor a rule condition sees. slothlet 3.20.0 hands an EVENT-rule condition the raw context
- * store (`{ instanceID, context: { actor }, … }`) while a CALL-rule condition receives the user context
- * itself (`{ actor }`); read both shapes so the rule means the same thing under either.
- * @param {object} ctx - Whatever the condition received.
- * @returns {object|undefined} The bound actor, if any.
- */
-function actorOf(ctx) {
-	return ctx?.actor ?? ctx?.context?.actor;
-}
-
 /** The serving instance's rules for the call-half tables (design § 7). */
 const SERVE_PERMISSIONS = {
 	defaultPolicy: "deny",
@@ -58,7 +47,7 @@ const SERVE_PERMISSIONS = {
 			effect: "allow",
 			// Resource-scoped: the project named in the CALL must be the actor's own — this is the rule
 			// shape only `checkCall` (callMeta) can evaluate; `checkAccess` would make it a non-match.
-			condition: (ctx, meta) => actorOf(ctx)?.roles?.includes("reader") === true && meta?.args?.[0] === actorOf(ctx)?.project
+			condition: (ctx, meta) => ctx?.actor?.roles?.includes("reader") === true && meta?.args?.[0] === ctx?.actor?.project
 		},
 		{ caller: "remote.renderer", target: "project.files.actor", effect: "allow" },
 		{ caller: "remote.renderer", target: "project.files.tamper", effect: "allow" },
@@ -86,7 +75,7 @@ const GROW_EVENTS = {
 		{ caller: "remote.plugin.audit", event: "trace.*", effect: "allow" },
 		{ caller: "remote.admin", event: "**", effect: "allow" },
 		{ caller: "events.subscribe", event: "**", effect: "allow" }, // the far module's HONEST identity — still not the channel's
-		{ caller: "remote.plugin", event: "cond.*", effect: "allow", condition: (ctx) => actorOf(ctx)?.id === "u1" }
+		{ caller: "remote.plugin", event: "cond.*", effect: "allow", condition: (ctx) => ctx?.actor?.id === "u1" }
 	]
 };
 
@@ -333,7 +322,7 @@ describe.skipIf(hasCheckCall)("serve({ principal }) on a slothlet WITHOUT permis
 		const [near, far] = createPair();
 		const peer = rawPeer(near);
 		await expect(serve(serveApi, far, { paths: ["host", "project"], principal: RENDERER })).rejects.toThrow(
-			/checkCall.*CLDMV\/slothlet#508/
+			/checkCall.*slothlet ≥ 3\.22\.0/
 		);
 		await settle();
 		expect(peer.frames).toEqual([]);
