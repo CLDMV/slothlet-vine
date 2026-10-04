@@ -16,17 +16,17 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ## ✨ What's New
 
-### Latest: v1.2.1 (October 2026)
+### Latest: v1.2.2 (October 2026)
 
-- **Dev-tooling dependency refresh ([#68](https://github.com/CLDMV/slothlet-vine/pull/68), [#70](https://github.com/CLDMV/slothlet-vine/pull/70))** — Updates to the lockfile only: `vitest` 5.0.3, `@cldmv/vitest-runner` 1.5.1, the jsonv lint/format packages, and the `ws` used by the WebSocket transport tests. No runtime source changed, and the peer ranges are the same as in v1.2.0 (`@cldmv/slothlet >=3.22.0`, optional `ws >=8.0.0`). It's a drop-in replacement for v1.2.0.
-- [View full v1.2.1 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.1.md)
+- **Dev-tooling dependency bump ([#72](https://github.com/CLDMV/slothlet-vine/pull/72))** — `@cldmv/fix-headers` moves from 2.1.1 to 2.1.4, the tool that maintains the repository's file headers. It produced no header changes here, so only `package.json` and the lockfile changed. No runtime source changed and the peer ranges are the same as in v1.2.1 (`@cldmv/slothlet >=3.22.0`, optional `ws >=8.0.0`); it's a drop-in replacement for v1.2.1.
+- [View full v1.2.2 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.2.md)
 
 ### Recent Releases
 
+- **v1.2.1** (October 2026) — dev-tooling dependency refresh in the lockfile only (`vitest` 5.0.3, `@cldmv/vitest-runner` 1.5.1, jsonv lint/format packages, `ws` for the transport tests); no runtime changes ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.1.md))
 - **v1.2.0** (October 2026) — channel principal: `serve({ principal })` judges every call and subscription as a transport-authenticated identity, plus a per-call `serve({ around })` wrapper; requires `@cldmv/slothlet >=3.22.0` ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.0.md))
 - **v1.1.3** (September 2026) — transports buffer frames that arrive before `grow()`/`serve()` registers a handler, so attaching after an `await` no longer loses the surface frame ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.3.md))
 - **v1.1.2** (September 2026) — `@cldmv/slothlet` peer floor raised to `>=3.20.0`; no runtime changes ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.2.md))
-- **v1.1.1** (September 2026) — CI-only: release-flow caller workflows synced to the current v4 templates ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.1.md))
 
 📚 **For complete version history and detailed release notes, see the [docs/changelog/](https://github.com/CLDMV/slothlet-vine/tree/master/docs/changelog/) folder.**
 
