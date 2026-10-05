@@ -18,7 +18,7 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ### Latest: v1.2.2 (October 2026)
 
-- **Dev-tooling dependency bump ([#72](https://github.com/CLDMV/slothlet-vine/pull/72))** — `@cldmv/fix-headers` moves from 2.1.1 to 2.1.4, the tool that maintains the repository's file headers. It produced no header changes here, so only `package.json` and the lockfile changed. No runtime source changed and the peer ranges are the same as in v1.2.1 (`@cldmv/slothlet >=3.22.0`, optional `ws >=8.0.0`); it's a drop-in replacement for v1.2.1.
+- **Dev-tooling dependency bump ([#72](https://github.com/CLDMV/slothlet-vine/pull/72), [#75](https://github.com/CLDMV/slothlet-vine/pull/75))** — `@cldmv/fix-headers` moves from 2.1.1 to 2.2.0, so `@Last modified by` now follows content edits only and a header-only rewrite keeps the recorded editor, and `@cldmv/configs` moves from 1.2.0 to 1.2.4, whose shared config no longer forces the author fields. Neither changed any file header here. No runtime source changed and the peer ranges are the same as in v1.2.1 (`@cldmv/slothlet >=3.22.0`, optional `ws >=8.0.0`); it's a drop-in replacement for v1.2.1.
 - [View full v1.2.2 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.2.md)
 
 ### Recent Releases
