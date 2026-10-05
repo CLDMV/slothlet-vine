@@ -1,6 +1,6 @@
 {
 	"name": "@cldmv/slothlet-vine",
-	"version": "1.2.1",
+	"version": "1.2.2",
 	"description": "Vines between slothlet api trees — location-transparent forwarding leaves over pluggable transports (Web Worker postMessage, worker_threads, process IPC, WebSocket), permission-gated by slothlet itself.",
 	"type": "module",
 	"license": "Apache-2.0",
@@ -84,9 +84,9 @@
 		}
 	},
 	"devDependencies": {
-		"@cldmv/configs": "^1.2.0",
+		"@cldmv/configs": "^1.2.4",
 		"@cldmv/eslint-plugin-jsonv": "^1.0.3",
-		"@cldmv/fix-headers": "^2.1.1",
+		"@cldmv/fix-headers": "^2.2.0",
 		"@cldmv/jsonv": "^1.0.2",
 		"@cldmv/prettier-plugin-jsonv": "^1.0.1",
 		"@cldmv/slothlet": "^3.22.0",
