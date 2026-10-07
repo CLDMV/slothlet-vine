@@ -177,7 +177,7 @@ describe("requested context — accept, narrow, refuse (loopback, no principal)"
 		expect(await link.with({ project: "a" }, () => growApi.work.read())).toMatchObject({ project: "A" });
 	});
 
-	it("refuse: false, null, a throw, a rejection, or junk are all VINE_DENIED — and the leaf never runs", async () => {
+	it("refuse: false, null, a throw, a rejection, or junk are all VINE_CONTEXT — and the leaf never runs", async () => {
 		const answers = [
 			() => false,
 			() => null,
@@ -195,7 +195,7 @@ describe("requested context — accept, narrow, refuse (loopback, no principal)"
 		];
 		for (const answer of answers) {
 			const { serveApi, growApi, link } = await linked({ context: answer });
-			expect(await remoteCode(link.with({ project: "A" }, () => growApi.work.read()))).toBe(CODES.DENIED);
+			expect(await remoteCode(link.with({ project: "A" }, () => growApi.work.read()))).toBe(CODES.CONTEXT);
 			expect(await serveApi.work.count()).toBe(0);
 		}
 	});
@@ -288,26 +288,37 @@ describe("requested context — merged with the channel principal", () => {
 		expect(await serveApi.work.count()).toBe(1);
 	});
 
+	it("on one link: a refused context is VINE_CONTEXT, an accepted one the rules refuse is VINE_DENIED", async () => {
+		const { growApi, link } = await linked(
+			{ principal: RENDERER, context: (requested) => (requested.project === "X" ? false : requested) },
+			{},
+			{ permissions: PERMISSIONS }
+		);
+		expect(await remoteCode(link.with({ project: "X" }, () => growApi.work.read()))).toBe(CODES.CONTEXT);
+		expect(await remoteCode(link.with({ project: "B" }, () => growApi.work.read()))).toBe(CODES.DENIED);
+		expect(await link.with({ project: "A" }, () => growApi.work.read())).toMatchObject({ project: "A" });
+	});
+
 	it("a principal key always wins over a requested one of the same name", async () => {
 		const { growApi, link } = await linked({ principal: RENDERER, context: acceptAll }, {}, { permissions: PERMISSIONS });
 		const got = await link.with({ project: "A", actor: { id: "mallory" } }, () => growApi.work.read());
 		expect(got.actor).toEqual({ id: "u42" });
 	});
 
-	it("a refused context is VINE_DENIED before the gate — the rules are never asked", async () => {
+	it("a refused context is VINE_CONTEXT before the gate — the rules are never asked", async () => {
 		// An explicit deny audits `permission:denied` whenever the gate is asked — so its absence proves
 		// the gate never was. The control serve (accepting check) shows the audit does fire.
 		const permissions = { defaultPolicy: "deny", rules: [{ caller: "remote.renderer", target: "work.read", effect: "deny" }] };
-		const audited = async (check) => {
+		const audited = async (check, code) => {
 			const { serveApi, growApi, link } = await linked({ principal: RENDERER, context: check }, {}, { permissions });
 			const audits = [];
 			serveApi.slothlet.lifecycle.on("permission:denied", (payload) => audits.push(payload));
-			expect(await remoteCode(link.with({ project: "A" }, () => growApi.work.read()))).toBe(CODES.DENIED);
+			expect(await remoteCode(link.with({ project: "A" }, () => growApi.work.read()))).toBe(code);
 			await new Promise((resolve) => setTimeout(resolve, 20));
 			return audits.filter((d) => d.caller === "remote.renderer" && d.target === "work.read");
 		};
-		expect(await audited(acceptAll)).not.toEqual([]);
-		expect(await audited(() => false)).toEqual([]);
+		expect(await audited(acceptAll, CODES.DENIED)).not.toEqual([]);
+		expect(await audited(() => false, CODES.CONTEXT)).toEqual([]);
 	});
 
 	it("accepted keys are protected alongside the principal's", async () => {
@@ -374,13 +385,13 @@ describe("requested context — no check configured", () => {
 		const err = await link.with({ project: "A" }, () => growApi.work.read()).catch((e) => e);
 		expect(err).toBeInstanceOf(VineError);
 		expect(err).not.toBeInstanceOf(VineRemoteError);
-		expect(err.code).toBe(CODES.DENIED);
+		expect(err.code).toBe(CODES.CONTEXT);
 		expect(sent.filter((frame) => frame.type === "call")).toEqual([]);
 		// A call with no requested context works as ever.
 		expect(await growApi.work.read()).toMatchObject({ project: null });
 	});
 
-	it("a hand-built frame carrying one is refused serve-side (VINE_DENIED) — never silently ignored", async () => {
+	it("a hand-built frame carrying one is refused serve-side (VINE_CONTEXT) — never silently ignored", async () => {
 		const serveApi = await instance({ base: CONTEXT_DIR });
 		const [near, far] = createPair();
 		const peer = rawPeer(near);
@@ -388,7 +399,7 @@ describe("requested context — no check configured", () => {
 		teardown.push(() => serving.close());
 		const surface = await peer.surface();
 		expect(surface).not.toHaveProperty("context");
-		expect((await peer.call("work.read", [], { context: { project: "A" } })).error.code).toBe(CODES.DENIED);
+		expect((await peer.call("work.read", [], { context: { project: "A" } })).error.code).toBe(CODES.CONTEXT);
 		expect(await serveApi.work.count()).toBe(0);
 		expect((await peer.call("work.read")).value).toEqual({ project: null, actor: null, extra: null });
 	});
@@ -543,7 +554,7 @@ describe("requested context — old/new interop (no FRAME_VERSION change)", () =
 		const link = await grow(growApi, near, { budgetMs: 2000 });
 		teardown.push(() => link.close());
 		expect(link.context).toBe(false);
-		await expect(link.with({ project: "A" }, () => growApi.work.read())).rejects.toMatchObject({ code: CODES.DENIED });
+		await expect(link.with({ project: "A" }, () => growApi.work.read())).rejects.toMatchObject({ code: CODES.CONTEXT });
 		expect(oldServe.frames.filter((frame) => frame.type === "call")).toEqual([]);
 		// A plain call's frame carries no `context` key at all — byte for byte the v1 frame.
 		const pending = growApi.work.read();
@@ -611,7 +622,7 @@ describe("requested context over websocket", () => {
 		teardown.push(() => link.close());
 		expect(link.context).toBe(true);
 		expect(await link.with({ project: "A", extra: 1 }, () => growApi.work.read())).toEqual({ project: "A", actor: null, extra: null });
-		expect(await remoteCode(link.with({ project: "B" }, () => growApi.work.read()))).toBe(CODES.DENIED);
+		expect(await remoteCode(link.with({ project: "B" }, () => growApi.work.read()))).toBe(CODES.CONTEXT);
 		expect(await growApi.work.read()).toMatchObject({ project: null });
 	});
 });

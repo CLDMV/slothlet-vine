@@ -70,12 +70,12 @@ import { assertPrincipalSupport, assertScopeSupport, bindPrincipal, gate } from 
  *   the permission gate, with a private copy of the request, the resolved principal (`null` without
  *   one), the path and the frame's arguments. It ACCEPTS by answering a plain object — the request
  *   itself, or a narrowed or changed one — and REFUSES by answering anything else (`false`, `null`, a
- *   non-plain or function-bearing object) or by throwing/rejecting; a refusal is `VINE_DENIED` and
+ *   non-plain or function-bearing object) or by throwing/rejecting; a refusal is `VINE_CONTEXT` and
  *   the leaf never runs. May be async. The accepted keys are merged into the call's context scope
  *   UNDER the principal's (a principal key always wins) and every key is write-protected, so
  *   `checkCall`, rule conditions, `requires`-principals, `around` and the leaf all see it and none
  *   can rewrite it. **Without this option a frame that carries a requested context is refused**
- *   (`VINE_DENIED`), so a client is never silently unscoped; with it, the `surface` frame advertises
+ *   (`VINE_CONTEXT`), so a client is never silently unscoped; with it, the `surface` frame advertises
  *   `context: true`, which a grow needs before it will send one. Requires a working
  *   `api.slothlet.context.scope` (checked at setup as a `TypeError`); a principal is NOT required.
  * @param {(call: { callId: string, path: string, args: unknown[], principal: Readonly<{ path: string, context?: object }>|null, context: object|null, invoke: () => Promise<unknown> }) => unknown} [options.around] -
@@ -286,8 +286,8 @@ export async function serve(api, channel, options = {}) {
 	 * @param {unknown[]} args - The call's arguments.
 	 * @param {unknown} requested - The frame's requested context, or `undefined` when it carried none.
 	 * @returns {Promise<unknown>} The leaf's resolved value.
-	 * @throws {VineError} `VINE_DENIED` when the principal may not call `path` (or could not be judged),
-	 *   or its requested context was refused; `VINE_DATA_ONLY` for a requested context that is not data.
+	 * @throws {VineError} `VINE_DENIED` when the principal may not call `path` (or could not be judged);
+	 *   `VINE_CONTEXT` when its requested context was refused; `VINE_DATA_ONLY` for one that is not data.
 	 */
 	async function answerAs(callId, path, args, requested) {
 		const who = principal.resolve();
@@ -310,7 +310,8 @@ export async function serve(api, channel, options = {}) {
 	 * @param {unknown[]} args - The call's arguments.
 	 * @param {unknown} requested - The frame's requested context.
 	 * @returns {Promise<unknown>} The leaf's resolved value.
-	 * @throws {VineError} `VINE_DENIED` / `VINE_DATA_ONLY` as for {@link accept}.
+	 * @throws {VineError} `VINE_CONTEXT` / `VINE_DATA_ONLY` as for {@link accept}; `VINE_DENIED` when
+	 *   the scope cannot be opened.
 	 */
 	async function answerScoped(callId, path, args, requested) {
 		const accepted = await accept(requested, null, path, args);
@@ -354,16 +355,16 @@ export async function serve(api, channel, options = {}) {
 	/**
 	 * Judge one requested context (#79). In order: it must be data (`VINE_DATA_ONLY` — the same rules
 	 * as a call's arguments, plus a plain-object shape); a serve without a `context` check refuses it
-	 * (`VINE_DENIED` — a client must never believe a call is scoped when it is not); the host's check
+	 * (`VINE_CONTEXT` — a client must never believe a call is scoped when it is not); the host's check
 	 * gets a private copy and must answer a plain, data-only object, anything else — `false`, `null`, a
-	 * throw, a rejection, junk — being a refusal (`VINE_DENIED`). The accepted answer is copied, so the
+	 * throw, a rejection, junk — being a refusal (`VINE_CONTEXT`). The accepted answer is copied, so the
 	 * host's own object is never shared with the scope.
 	 * @param {unknown} requested - The frame's requested context (untrusted).
 	 * @param {Readonly<{ path: string, context?: object }>|null} who - The resolved principal, or `null`.
 	 * @param {string} path - The served leaf path.
 	 * @param {unknown[]} args - The call's arguments (as a rule condition would receive them).
 	 * @returns {Promise<object>} The accepted context.
-	 * @throws {VineError} `VINE_DATA_ONLY` or `VINE_DENIED`.
+	 * @throws {VineError} `VINE_DATA_ONLY` or `VINE_CONTEXT`.
 	 */
 	async function accept(requested, who, path, args) {
 		const fault = findContextFault(requested);
@@ -374,7 +375,7 @@ export async function serve(api, channel, options = {}) {
 				{ path, location: fault }
 			);
 		}
-		const refused = new VineError(CODES.DENIED, `slothlet-vine: the requested context for '${path}' is not accepted on this channel`, {
+		const refused = new VineError(CODES.CONTEXT, `slothlet-vine: the requested context for '${path}' is not accepted on this channel`, {
 			path,
 			principal: who ? who.path : null
 		});

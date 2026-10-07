@@ -62,7 +62,7 @@ export const DEFAULT_BUDGET_MS = 30_000;
  *   called synchronously per call that answers one (or `null` / `undefined` for none) — the way a
  *   client sends whatever it currently has pinned without the far side holding any state. A request,
  *   never identity: the far side's `serve({ context })` check accepts, narrows or refuses it. A call
- *   carrying one is refused locally (`VINE_DENIED`, nothing sent) when the far side did not advertise
+ *   carrying one is refused locally (`VINE_CONTEXT`, nothing sent) when the far side did not advertise
  *   that it accepts requested contexts; a resolver that throws rejects that call with its error, and
  *   an answer that is not data rejects it `VINE_DATA_ONLY`.
  * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}> }>}
@@ -361,7 +361,7 @@ export async function grow(api, channel, options = {}) {
 			const requested = requestedContext(path);
 			if (requested !== null && !acceptsContext) {
 				throw new VineError(
-					CODES.DENIED,
+					CODES.CONTEXT,
 					`slothlet-vine: '${path}' was called with a requested context, but the far side does not accept one`,
 					{ path }
 				);

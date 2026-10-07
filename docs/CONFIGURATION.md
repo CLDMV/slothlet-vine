@@ -99,16 +99,16 @@ The host check for a per-call **requested context**: a data-only plain object th
 
 The check runs only for frames that carry one, **after** the principal is resolved and **before** the permission gate. It receives a private copy of the request and `{ principal, path, args }` (`principal` is `null` on a serve without one; `args` are the frame's arguments as a rule condition would see them), and may be async.
 
-| The check answers                                                                           | Outcome                                                                                             |
-| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| a plain, data-only object — the request itself                                              | **accept**: those keys go into the call's context scope                                             |
-| a different plain object (a subset, a canonicalized value)                                  | **narrow**: only what it answered goes into the scope                                               |
-| `false`, `null`, `undefined`, `true`, an array, a class instance, a function-bearing object | **refuse**: [`VINE_DENIED`](ERRORS.md#vine_-codes); the gate is never asked and the leaf never runs |
-| a throw or a rejection                                                                      | **refuse**: `VINE_DENIED` — the host's own error stays serve-side; the message names the path only  |
+| The check answers                                                                           | Outcome                                                                                              |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| a plain, data-only object — the request itself                                              | **accept**: those keys go into the call's context scope                                              |
+| a different plain object (a subset, a canonicalized value)                                  | **narrow**: only what it answered goes into the scope                                                |
+| `false`, `null`, `undefined`, `true`, an array, a class instance, a function-bearing object | **refuse**: [`VINE_CONTEXT`](ERRORS.md#vine_-codes); the gate is never asked and the leaf never runs |
+| a throw or a rejection                                                                      | **refuse**: `VINE_CONTEXT` — the host's own error stays serve-side; the message names the path only  |
 
 The accepted keys are merged into the call's `context.scope` **under** the principal's — a principal key always wins, so a request can never override `actor` — and every key is write-protected (`CONTEXT_KEY_PROTECTED` on any write, nested fields included). `checkCall`, rule conditions, `requires`-principals, [`around`](#around) and the leaf all see it as plain `context.project`. On a serve without a principal, an accepted context still runs in such a scope; there is just no gate.
 
-**No check configured, the default, refuses**: a frame that carries a requested context is answered `VINE_DENIED`, never run unscoped, so a client can never believe a call is scoped when it isn't. A serve with a check adds `context: true` to its `surface` frame; a grow refuses locally to send a requested context to a far side that did not advertise it (which also covers an older serve that would drop the key). A request that is not data — not a plain object, a function anywhere, a value structured clone refuses — is `VINE_DATA_ONLY`, checked before the host's check is called.
+**No check configured, the default, refuses**: a frame that carries a requested context is answered `VINE_CONTEXT`, never run unscoped, so a client can never believe a call is scoped when it isn't. A serve with a check adds `context: true` to its `surface` frame; a grow refuses locally to send a requested context to a far side that did not advertise it (which also covers an older serve that would drop the key). A request that is not data — not a plain object, a function anywhere, a value structured clone refuses — is `VINE_DATA_ONLY`, checked before the host's check is called.
 
 `serve()` throws a `TypeError` when `context` is not a function, or when the instance's `context.scope` does not work (a `scope: false` instance). The permission system is **not** required unless a `principal` is also set. Like a principal, a context-accepting serve must run on the async (Node) runtime: under `runtime: "live"` concurrent scopes on one instance interleave.
 
@@ -224,7 +224,7 @@ let pinned = null; // set by the UI
 const link = await grow(viewApi, channel, { context: () => (pinned ? { project: pinned } : null) });
 ```
 
-The same data-only rules as arguments apply: a static value that is not a plain data object throws at `grow()` (`TypeError` for a non-object, `VINE_DATA_ONLY` for one that is not data); a resolver whose answer is not data rejects that call `VINE_DATA_ONLY`, and one that throws rejects it with its own error — nothing is sent either way. A call carrying a requested context to a far side that does not accept one (`link.context === false`) is refused locally with `VINE_DENIED` and nothing is sent. What the far side does with it is its [`context`](#context) check's decision.
+The same data-only rules as arguments apply: a static value that is not a plain data object throws at `grow()` (`TypeError` for a non-object, `VINE_DATA_ONLY` for one that is not data); a resolver whose answer is not data rejects that call `VINE_DATA_ONLY`, and one that throws rejects it with its own error — nothing is sent either way. A call carrying a requested context to a far side that does not accept one (`link.context === false`) is refused locally with `VINE_CONTEXT` and nothing is sent. What the far side does with it is its [`context`](#context) check's decision.
 
 ### `link.with(context, fn, ...args)`
 

@@ -33,12 +33,18 @@ export const CODES = Object.freeze({
 	NO_LEAF: "VINE_NO_LEAF",
 	/**
 	 * The serving side's channel principal is not permitted to call this path — slothlet's rules said
-	 * no (or could not be asked), and the leaf was never invoked. Produced by a `serve()` that bound a
-	 * `principal`, and for a per-call requested context (#79) that was refused: by the serve's
-	 * `context` check or because it has none — and, locally by a grow, before sending one to a far
-	 * side that does not accept it.
+	 * no (or could not be asked), and the leaf was never invoked. Produced ONLY by a `serve()` that
+	 * bound a `principal`, for a rules refusal; a refused requested context is {@link CODES.CONTEXT}.
 	 */
 	DENIED: "VINE_DENIED",
+	/**
+	 * A per-call requested context (#79) was refused, and the leaf was never invoked: the serve's
+	 * `context` check answered something other than a plain data object, threw or rejected, or the
+	 * serve has no check at all — or, produced LOCALLY by a grow with nothing sent, the far side never
+	 * advertised that it accepts a requested context. Distinct from `VINE_DENIED` (the rules refused)
+	 * so a client can tell "this context is not yours" (unpin it) from "you may not call this".
+	 */
+	CONTEXT: "VINE_CONTEXT",
 	/**
 	 * `.code` for a remote application error that carried none of its own — and for one whose code
 	 * was in the reserved `VINE_*` namespace, which is never adopted from the wire (the far side's
