@@ -15,7 +15,8 @@ const serving = await serve(api, channel, {
 	modules: ["ext-1"], // extra moduleIDs to union in (runtime add() mounts leaves() alone can't see)
 	budgetMs: 30_000, // accepted, IGNORED in v1 — documented for symmetry with grow()
 	principal: { path: "remote.renderer", context: { actor } }, // OPTIONAL — the channel principal for an untrusted peer
-	around: ({ callId, path, args, principal, invoke }) => invoke() // OPTIONAL — the host's own scope around each accepted call
+	context: (requested, { principal, path, args }) => requested, // OPTIONAL — accept / narrow / refuse a per-call requested context
+	around: ({ callId, path, args, principal, context, invoke }) => invoke() // OPTIONAL — the host's own scope around each accepted call
 });
 // serving: { leaves: string[], excluded: string[], principal: object|Function|null, close(): void }
 
@@ -24,9 +25,11 @@ const link = await grow(api, channel, {
 	budgetMs: 30_000, // per-call settle budget; exceeded → VINE_BUDGET
 	handshakeMs: 30_000, // deadline for the surface frame itself; defaults to budgetMs
 	paths: ["exts"], // dotted prefixes to mount (grow-side mirror of serve's own paths filter)
-	principal: "remote.plugin" // OPTIONAL — the channel principal for this end's EVENT server-half only
+	principal: "remote.plugin", // OPTIONAL — the channel principal for this end's EVENT server-half only
+	context: () => ({ project: pinned }) // OPTIONAL — the default per-call requested context (object, or a per-call function)
 });
-// link: { id, leaves: string[], skipped: string[], collisions: string[], close(): Promise<void>, closed: Promise<{reason}> }
+// link: { id, leaves: string[], skipped: string[], collisions: string[], context: boolean, with(context, fn, ...args), close(): Promise<void>, closed: Promise<{reason}> }
+await link.with({ project: "p1" }, () => api.project.files.list()); // every call in the extent carries { project: "p1" }
 ```
 
 ---
@@ -88,9 +91,42 @@ wss.on("connection", async (socket, request) => {
 
 The full model — what a principal is and is not, the rule shapes, and the worked call and subscription tables — is in [PERMISSIONS.md → Serving to an untrusted peer](PERMISSIONS.md#serving-to-an-untrusted-peer-the-channel-principal).
 
+### `context`
+
+**Type:** `(requested: object, call: { principal, path, args }) => object | false | null | undefined` (or a Promise of one) **Default:** none — a requested context is **refused**
+
+The host check for a per-call **requested context**: a data-only plain object the far side attaches to one `call` frame (grow-side [`link.with()`](#linkwithcontext-fn-args) or [`grow({ context })`](#context-1)), such as the project a browser window is working in. It is a request, never identity — identity is the [`principal`](#principal)'s, bound to the channel — and it lives on the call, so the server holds no per-connection state and nothing races when a client switches projects.
+
+The check runs only for frames that carry one, **after** the principal is resolved and **before** the permission gate. It receives a private copy of the request and `{ principal, path, args }` (`principal` is `null` on a serve without one; `args` are the frame's arguments as a rule condition would see them), and may be async.
+
+| The check answers                                                                           | Outcome                                                                                             |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| a plain, data-only object — the request itself                                              | **accept**: those keys go into the call's context scope                                             |
+| a different plain object (a subset, a canonicalized value)                                  | **narrow**: only what it answered goes into the scope                                               |
+| `false`, `null`, `undefined`, `true`, an array, a class instance, a function-bearing object | **refuse**: [`VINE_DENIED`](ERRORS.md#vine_-codes); the gate is never asked and the leaf never runs |
+| a throw or a rejection                                                                      | **refuse**: `VINE_DENIED` — the host's own error stays serve-side; the message names the path only  |
+
+The accepted keys are merged into the call's `context.scope` **under** the principal's — a principal key always wins, so a request can never override `actor` — and every key is write-protected (`CONTEXT_KEY_PROTECTED` on any write, nested fields included). `checkCall`, rule conditions, `requires`-principals, [`around`](#around) and the leaf all see it as plain `context.project`. On a serve without a principal, an accepted context still runs in such a scope; there is just no gate.
+
+**No check configured, the default, refuses**: a frame that carries a requested context is answered `VINE_DENIED`, never run unscoped, so a client can never believe a call is scoped when it isn't. A serve with a check adds `context: true` to its `surface` frame; a grow refuses locally to send a requested context to a far side that did not advertise it (which also covers an older serve that would drop the key). A request that is not data — not a plain object, a function anywhere, a value structured clone refuses — is `VINE_DATA_ONLY`, checked before the host's check is called.
+
+`serve()` throws a `TypeError` when `context` is not a function, or when the instance's `context.scope` does not work (a `scope: false` instance). The permission system is **not** required unless a `principal` is also set. Like a principal, a context-accepting serve must run on the async (Node) runtime: under `runtime: "live"` concurrent scopes on one instance interleave.
+
+```javascript
+await serve(api, createChannel(socket), {
+	paths: ["project"],
+	principal: { path: "remote.renderer", context: { actor: { id: user.id } } },
+	// Accept the pinned project only when this user can access it; drop anything else the client sent.
+	context: async (requested, { principal }) =>
+		(await projects.canAccess(principal.context.actor.id, requested.project)) ? { project: requested.project } : false
+});
+```
+
+Subscriptions carry no requested context in v1: a `sub` frame is resolved from the principal alone (see [PERMISSIONS.md](PERMISSIONS.md#per-call-requested-context)).
+
 ### `around`
 
-**Type:** `({ callId, path, args, principal, invoke }) => unknown` **Default:** none
+**Type:** `({ callId, path, args, principal, context, invoke }) => unknown` **Default:** none
 
 A per-call wrapper for the host's own scope around each call the vine has accepted: a transaction, a deadline, an audit record. It runs after every check the vine makes — the served-surface check (`VINE_NO_LEAF`), the principal gate (`VINE_DENIED`, inside the principal's context scope), and the args data-only check (`VINE_DATA_ONLY`) — so it never sees a frame the vine would have refused. Identity is not established here: that is [`principal`](#principal)'s job, and `around` decorates a call that is already authorized.
 
@@ -100,6 +136,7 @@ A per-call wrapper for the host's own scope around each call the vine has accept
 | `path`      | The served leaf path.                                                                                                                                                                                                                                                                                                  |
 | `args`      | A private copy of the call's arguments, for inspection. Changing it changes nothing `invoke()` passes.                                                                                                                                                                                                                 |
 | `principal` | The frozen `{ path, context? }` resolved for **this** frame (a function-form principal is resolved per frame), or `null` on a serve without a principal.                                                                                                                                                               |
+| `context`   | A private copy of the requested context the [`context`](#context) check accepted for this call, or `null` when the frame carried none. `around` runs inside the scope that holds it.                                                                                                                                   |
 | `invoke`    | `() => Promise<unknown>` — runs the gated leaf with the call's original arguments. It takes no arguments (the call that was authorized is the call that runs) and may be called more than once; each call gets a fresh copy of the arguments as they arrived, so a retry never sees what a failed attempt did to them. |
 
 Whatever `around` returns is the call's result — the data-only return check applies to it exactly as to a leaf's own value, so a wrapper that returns a function is refused `VINE_DATA_ONLY`. Whatever it throws is the call's error, and reaches the grow side as a `VineRemoteError` carrying that error's own name, message and code. `around` may also answer without calling `invoke()` at all (a cached answer). With `around` set, a call's arguments must be structured-cloneable — they already must be to cross any real transport — and ones that are not answer `VINE_DATA_ONLY`.
@@ -175,6 +212,32 @@ The channel principal for **this end's event server-half only**. A grow answers 
 const link = await grow(hostApi, workerChannel, { principal: "remote.plugin" });
 ```
 
+### `context`
+
+**Type**: `object | () => (object | null | undefined)`
+**Default**: none
+
+The link's **default** per-call requested context: attached to every call made over this link outside a [`link.with()`](#linkwithcontext-fn-args) extent. A static plain object is validated and copied once (mutating it later changes nothing). A function is called synchronously **per call** and answers the context for that call, or `null` / `undefined` for none — the way a window sends whatever project it currently has pinned while the server holds nothing:
+
+```javascript
+let pinned = null; // set by the UI
+const link = await grow(viewApi, channel, { context: () => (pinned ? { project: pinned } : null) });
+```
+
+The same data-only rules as arguments apply: a static value that is not a plain data object throws at `grow()` (`TypeError` for a non-object, `VINE_DATA_ONLY` for one that is not data); a resolver whose answer is not data rejects that call `VINE_DATA_ONLY`, and one that throws rejects it with its own error — nothing is sent either way. A call carrying a requested context to a far side that does not accept one (`link.context === false`) is refused locally with `VINE_DENIED` and nothing is sent. What the far side does with it is its [`context`](#context) check's decision.
+
+### `link.with(context, fn, ...args)`
+
+Not an option — a method on the returned link. Runs `fn(...args)` so that **every call it makes over this link** — directly, through any module, across every `await` — carries `context` on its `call` frame, and resolves to `fn`'s value. The extent is carried on the grow instance's own context scope (so that instance must not be `scope: false`), under a key private to the link: calls over other links are untouched. The innermost extent wins outright (no merge with an outer one or with the default), and `with(null, fn)` runs `fn` with no requested context at all. `context` is validated (`VINE_DATA_ONLY`) and copied up front; a non-function `fn` is a `TypeError`.
+
+```javascript
+// Two windows, one link: each call carries its own project, concurrently.
+await Promise.all([
+	link.with({ project: "A" }, () => viewApi.project.files.list()),
+	link.with({ project: "B" }, () => viewApi.project.files.list())
+]);
+```
+
 ---
 
 ## Return values
@@ -190,14 +253,16 @@ const link = await grow(hostApi, workerChannel, { principal: "remote.plugin" });
 
 ### `link` (from `grow()`)
 
-| Field        | Type                         | Meaning                                                                                                                                           |
-| ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`         | `string`                     | The link's internal moduleID (`vine-<nonce>`), for diagnostics.                                                                                   |
-| `leaves`     | `string[]`                   | Paths actually mounted and forwarding.                                                                                                            |
-| `skipped`    | `string[]`                   | Far leaves refused locally: an unsafe path, outside `paths`, rejected by `add()`, or published after the link had already ended.                  |
-| `collisions` | `string[]`                   | Paths the local instance already occupied. **Not mounted** — the incumbent keeps answering there, and this leaf is unreachable through this link. |
-| `close()`    | `() => Promise<void>`        | Unmount every stub this link owns and settle every in-flight call `VINE_CLOSED`. Idempotent.                                                      |
-| `closed`     | `Promise<{ reason, info? }>` | Resolves once the link ends, whichever way — `reason` is `"closed"` (you called `close()`) or `"gone"` (the far side died).                       |
+| Field        | Type                                | Meaning                                                                                                                                           |
+| ------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | `string`                            | The link's internal moduleID (`vine-<nonce>`), for diagnostics.                                                                                   |
+| `leaves`     | `string[]`                          | Paths actually mounted and forwarding.                                                                                                            |
+| `skipped`    | `string[]`                          | Far leaves refused locally: an unsafe path, outside `paths`, rejected by `add()`, or published after the link had already ended.                  |
+| `collisions` | `string[]`                          | Paths the local instance already occupied. **Not mounted** — the incumbent keeps answering there, and this leaf is unreachable through this link. |
+| `context`    | `boolean`                           | Whether the far side accepts a per-call requested context (its `surface` advertised it). When `false`, a call carrying one is refused locally.    |
+| `with()`     | `(context, fn, ...args) => Promise` | Run `fn` with a per-call requested context on every call it makes over this link — see [`link.with()`](#linkwithcontext-fn-args).                 |
+| `close()`    | `() => Promise<void>`               | Unmount every stub this link owns and settle every in-flight call `VINE_CLOSED`. Idempotent.                                                      |
+| `closed`     | `Promise<{ reason, info? }>`        | Resolves once the link ends, whichever way — `reason` is `"closed"` (you called `close()`) or `"gone"` (the far side died).                       |
 
 `leaves`, `skipped`, and `collisions` are **disjoint** and together account for every leaf the far side published.
 

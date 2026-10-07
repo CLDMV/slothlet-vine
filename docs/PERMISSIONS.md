@@ -133,6 +133,49 @@ With a principal, every far `sub` is resolved as `principal.path` — `null` fro
 
 The forwarder is symmetric, and the trusted end of a channel is not always the serving end: a Node host that grows leaves out of an untrusted worker plugin still answers that plugin's `sub` frames for host events. `grow(api, channel, { principal })` binds the same identity for that end's event server-half — every far `sub` is resolved as the principal with the same narrowing rules — and nothing else: a grow answers no `call` frames, so only the event-side preconditions apply and `checkCall` is not required.
 
+### Per-call requested context
+
+A principal is per channel. Some context is per **call** and chosen by the caller: the project a user is working in, with one browser window on project A and another on project B over the same or separate sockets. Putting it in the principal makes the server hold per-connection state that races with in-flight calls when it changes; putting it in arguments threads a parameter through every leaf. So a `call` frame may carry an optional, data-only **requested context**, and the host decides what of it to believe:
+
+```javascript
+// serve side
+await serve(api, createChannel(socket), {
+	paths: ["project"],
+	principal: { path: "remote.renderer", context: { actor: { id: user.id, roles: user.roles } } },
+	context: async (requested, { principal }) =>
+		(await projects.canAccess(principal.context.actor.id, requested.project)) ? { project: requested.project } : false
+});
+
+// a rule can now be scoped by the accepted project, and a leaf reads it as context.project
+const rules = [
+	{ caller: "remote.renderer", target: "project.files.*", effect: "allow", condition: (ctx) => typeof ctx.project === "string" }
+];
+```
+
+```javascript
+// grow side (the page)
+await link.with({ project: "p1" }, () => viewApi.project.files.list()); // every call in the extent carries it
+const link2 = await grow(viewApi, channel, { context: () => ({ project: pinned }) }); // or per call, from whatever is pinned
+```
+
+The pipeline for a frame that carries one, with a principal: `VINE_NO_LEAF` → resolve the principal → `VINE_DATA_ONLY` if the request is not data (a plain object with no function anywhere that survives a structured clone — the argument rules plus a shape) → the host's `context` check, `VINE_DENIED` unless it answers a plain, data-only object → open the scope with the accepted keys merged **under** the principal's, every key write-protected → the gate (`checkCall`) → the args scan → invoke → `result`. Without a principal the same, minus the gate. A frame without a requested context is untouched by all of this.
+
+| requested context on the frame | `context` check answers        | scope the gate and leaf see       | net                                                    |
+| ------------------------------ | ------------------------------ | --------------------------------- | ------------------------------------------------------ |
+| none                           | not called                     | the principal's context only      | as before                                              |
+| `{ project: "p1" }`            | the request                    | `{ project: "p1", actor }`        | the rules decide, with `ctx.project === "p1"`          |
+| `{ project: "p1", debug: 1 }`  | `{ project: "p1" }` (narrowed) | `{ project: "p1", actor }`        | `debug` never reaches anything                         |
+| `{ project: "p2" }`            | `false` (no access)            | none — no scope is opened         | `VINE_DENIED`; the rules are never asked               |
+| `{ actor: { id: "root" } }`    | the request                    | `{ actor }` — the principal's own | the principal key wins; the request cannot override it |
+| `{ project: "p1" }`            | — (no check configured)        | none                              | `VINE_DENIED` — a request is never silently ignored    |
+| `{ cb() {} }` or `"p1"`        | not called                     | none                              | `VINE_DATA_ONLY`                                       |
+
+Three decisions worth knowing:
+
+- **No check, no context.** A serve without a `context` check refuses a frame that carries one (`VINE_DENIED`) rather than ignoring it, so a client never believes a call is scoped when it is not. A serve with a check advertises `context: true` on its `surface` frame, and a grow refuses locally (`VINE_DENIED`, nothing sent) to send one where it was not advertised — which also covers an older serve that would drop the unknown key and run the call unscoped. No `FRAME_VERSION` change: an older grow never sends the key and is answered exactly as before.
+- **It is a request, not identity.** The check is where the host ties it to identity — "may this principal work in this project?" — and what it answers is all that reaches the scope. Rules that matter should still be written against the principal (`caller:`) and read the accepted keys in conditions.
+- **Events carry no requested context in v1.** A `sub` frame has no `context` key; the level is resolved from the principal (and its context) alone, at subscribe and per emit. A subscription outlives any one call, so a per-call request has no natural meaning there; a client that needs per-project events subscribes to project-named events and lets conditional event rules check `ctx.actor`.
+
 ### What the instance must provide — fail-closed at setup
 
 `serve()` / `grow()` throw a `TypeError` before publishing anything when a principal is given and the instance cannot enforce it:
