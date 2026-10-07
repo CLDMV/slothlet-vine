@@ -14,7 +14,7 @@
  */
 
 import { CODES, VineError, fromWire } from "./lib/errors.mjs";
-import { callFrame, findFunctionArg, isSafePath, parseFrame } from "./lib/frame.mjs";
+import { callFrame, findContextFault, findFunctionArg, isSafePath, parseFrame } from "./lib/frame.mjs";
 import { createEventForwarder } from "./lib/events.mjs";
 import { PendingTable, assertApi, assertChannel, makeNonce, onCloseSafe } from "./lib/link.mjs";
 import { assertPrincipalSupport, bindPrincipal } from "./lib/principal.mjs";
@@ -56,14 +56,27 @@ export const DEFAULT_BUDGET_MS = 30_000;
  *   must exist (plus a working `context.run` when a static principal carries a `context`);
  *   `permissions.global.checkCall` is NOT required, because a grow answers no calls. Omit it for a
  *   trusted transport: nothing changes.
- * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], close: () => Promise<void>, closed: Promise<{reason: string, info?: object}> }>}
+ * @param {object|(() => object|null|undefined)} [options.context] - The link's DEFAULT per-call
+ *   **requested context** (#79): attached to every call made over this link outside a
+ *   {@link link.with} extent. A plain, data-only object (validated here, copied once), or a function
+ *   called synchronously per call that answers one (or `null` / `undefined` for none) — the way a
+ *   client sends whatever it currently has pinned without the far side holding any state. A request,
+ *   never identity: the far side's `serve({ context })` check accepts, narrows or refuses it. A call
+ *   carrying one is refused locally (`VINE_DENIED`, nothing sent) when the far side did not advertise
+ *   that it accepts requested contexts; a resolver that throws rejects that call with its error, and
+ *   an answer that is not data rejects it `VINE_DATA_ONLY`.
+ * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}> }>}
  *   The live link. The three path lists are DISJOINT and together account for every leaf the far
  *   side published: `leaves` are the paths actually mounted and forwarding; `skipped` are far leaves
  *   refused locally (unsafe path, outside `paths`, rejected by `add()`, or published after the link
  *   had already ended); `collisions` are paths the local instance already occupied, which are NOT
  *   mounted — the incumbent keeps answering there and the far leaf is unreachable through this link.
- * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel — or, with a
+ *   `context` is whether the far side accepts a requested context (its `surface` advertised it), and
+ *   `with(context, fn, ...args)` runs `fn` with a requested context on every call it makes over THIS link.
+ * @throws {TypeError} When `api` is not a slothlet instance or `channel` is not a Channel, when
+ *   `context` is not a function or a plain object — or, with a
  *   `principal`, when it is malformed or the instance cannot enforce it (see `options.principal`).
+ * @throws {VineError} `VINE_DATA_ONLY` when a static `context` is not data.
  * @throws {VineError} `VINE_GONE` when the channel closes before the surface arrives, `VINE_BUDGET`
  *   when the handshake budget elapses first.
  *
@@ -90,6 +103,7 @@ export async function grow(api, channel, options = {}) {
 	const budgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0 ? Number(options.budgetMs) : DEFAULT_BUDGET_MS;
 	const handshakeMs = handshakeBudget(options.handshakeMs, budgetMs);
 	const prefixes = Array.isArray(options.paths) ? options.paths.filter((p) => typeof p === "string" && p.length > 0) : null;
+	const defaultContext = bindDefaultContext(options.context);
 
 	const nonce = makeNonce();
 	// The separator is a HYPHEN, and that is load-bearing. Probed on @cldmv/slothlet 3.14.0: a
@@ -100,6 +114,15 @@ export async function grow(api, channel, options = {}) {
 	// zero-cost, works on both patched and unpatched slothlet, and nothing benefits from a colon.
 	const moduleID = `vine-${nonce}`;
 	const pending = new PendingTable(nonce);
+	// `link.with()` (#79) carries its requested context on the grow instance's own context scope, under
+	// a key private to this link — so a `with` on one link never scopes calls over another. The value is
+	// a HOLDER function, not the data: slothlet shares callables by reference across scopes (#408) and
+	// deep-clones everything else, and a protected key's plain value comes back as a read-only view. The
+	// holder answers a fresh copy of the snapshot per call, and only holders this link minted (the
+	// WeakSet) are honoured, so a grow-side module that writes its own function under the key is ignored.
+	const contextKey = `${moduleID}:context`;
+	/** @type {WeakSet<Function>} */
+	const holders = new WeakSet();
 
 	/** @type {{ closed: boolean, gone: boolean }} The link's terminal state; both are one-way. */
 	const state = { closed: false, gone: false };
@@ -249,6 +272,9 @@ export async function grow(api, channel, options = {}) {
 		throw err;
 	}
 
+	/** Whether the far side advertised that it accepts a requested context (#79). @type {boolean} */
+	const acceptsContext = surface.context === true;
+
 	/** @type {string[]} */
 	const mounted = [];
 	/** @type {string[]} */
@@ -289,6 +315,26 @@ export async function grow(api, channel, options = {}) {
 	}
 
 	/**
+	 * The requested context for one call: the innermost {@link link.with} extent's (read from the
+	 * grow instance's live context — a stub runs inside its caller's extent, slothlet's wrapper sees
+	 * to that), else the link default. `null` means none.
+	 * @param {string} path - The leaf being called, for errors.
+	 * @returns {object|null} A fresh, validated copy, or `null`.
+	 * @throws {VineError|unknown} `VINE_DATA_ONLY` for a default resolver's non-data answer; the
+	 *   resolver's own error when it throws.
+	 */
+	function requestedContext(path) {
+		let holder;
+		try {
+			holder = api.slothlet?.context?.get?.()?.[contextKey];
+		} catch {
+			holder = undefined;
+		}
+		if (typeof holder === "function" && holders.has(holder)) return holder();
+		return defaultContext(path);
+	}
+
+	/**
 	 * Build the forwarding stub for one leaf. Reached ONLY when slothlet has already allowed the call
 	 * — permission denial happens in the wrapper, before this body runs.
 	 * @param {string} path - The dotted leaf path.
@@ -309,10 +355,21 @@ export async function grow(api, channel, options = {}) {
 					location: functionAt
 				});
 			}
+			// The requested context (#79): the innermost `link.with()` extent's, else the link default.
+			// Refused LOCALLY when the far side never said it accepts one — an older serve would drop the
+			// key and run the call unscoped, and the caller would never know.
+			const requested = requestedContext(path);
+			if (requested !== null && !acceptsContext) {
+				throw new VineError(
+					CODES.DENIED,
+					`slothlet-vine: '${path}' was called with a requested context, but the far side does not accept one`,
+					{ path }
+				);
+			}
 			const callId = pending.nextCallId();
 			const settled = pending.open(callId, { path, budgetMs });
 			try {
-				channel.send(callFrame(callId, path, args));
+				channel.send(callFrame(callId, path, args, requested));
 			} catch (err) {
 				// The frame could not be handed to the transport — an un-cloneable argument the data-only
 				// scan cannot see (a getter that returns a function, a Proxy hiding its keys), or a dead
@@ -344,6 +401,39 @@ export async function grow(api, channel, options = {}) {
 		leaves: mounted,
 		skipped,
 		collisions,
+		/**
+		 * Whether the far side accepts a per-call requested context (#79) — its `surface` frame said so
+		 * (a `serve()` with a `context` check). When `false`, a call that carries one is refused locally.
+		 * @type {boolean}
+		 */
+		context: acceptsContext,
+		/**
+		 * Run `fn` with a per-call **requested context** (#79): every call `fn` makes over THIS link —
+		 * directly or through any module, across every `await` — carries `context` on its `call` frame,
+		 * for the far side's `serve({ context })` check to accept, narrow or refuse. It is a request,
+		 * not identity, and it lives on the call, not the channel: the far side holds no state, two
+		 * extents over one link can carry different contexts at once, and a later `with()` never races
+		 * an in-flight call. The innermost extent wins (no merge); `null` clears it for a nested extent
+		 * (the link default does not apply there either). Calls over other links are untouched.
+		 *
+		 * `context` is checked by the same data-only rules as arguments — a plain object with no
+		 * function anywhere that survives a structured clone — and copied once, so mutating it later
+		 * changes nothing. Runs `fn` inside `api.slothlet.context.scope()` on the grow instance, so that
+		 * instance must not be `scope: false`.
+		 * @param {object|null} context - The requested context, or `null` for none.
+		 * @param {(...args: unknown[]) => unknown} fn - The extent.
+		 * @param {...unknown} args - Forwarded to `fn`.
+		 * @returns {Promise<unknown>} `fn`'s value.
+		 * @throws {TypeError} When `fn` is not a function.
+		 * @throws {VineError} `VINE_DATA_ONLY` when `context` is not data.
+		 */
+		async with(context, fn, ...args) {
+			if (typeof fn !== "function") throw new TypeError("@cldmv/slothlet-vine: link.with() needs a function to run");
+			const snapshot = context === null ? null : validContext(context, "link.with()");
+			const holder = () => (snapshot === null ? null : structuredClone(snapshot));
+			holders.add(holder);
+			return await api.slothlet.context.scope({ context: { [contextKey]: holder }, protect: [contextKey], fn, args });
+		},
 		closed: closedPromise,
 		/**
 		 * Tear the link down locally: unmount every stub and settle every in-flight call with
@@ -423,6 +513,49 @@ async function ownedPaths(api, moduleID, paths) {
 	} catch {
 		return new Set(paths);
 	}
+}
+
+/**
+ * Validate a requested context (#79) against the data-only rules and copy it.
+ * @param {unknown} value - The candidate.
+ * @param {string} where - Who supplied it, for the error (`link.with()`, `grow() context`, a path).
+ * @returns {object} A structured clone of `value`.
+ * @throws {VineError} `VINE_DATA_ONLY` naming the first fault.
+ */
+function validContext(value, where) {
+	const fault = findContextFault(value);
+	if (fault !== null) {
+		throw new VineError(
+			CODES.DATA_ONLY,
+			`slothlet-vine: ${where} was given a requested context that is not data (at ${fault}) — the vine is data-only`,
+			{ location: fault }
+		);
+	}
+	return structuredClone(value);
+}
+
+/**
+ * Bind `grow()`'s `context` option (#79) — the link's default requested context — into a per-call
+ * reader. A static object is validated and copied once (each call gets its own copy); a function is
+ * called synchronously per call and its answer validated then.
+ * @param {unknown} option - The raw option (`undefined` / `null` → no default).
+ * @returns {(path: string) => object|null} Answers the default for one call, or `null`.
+ * @throws {TypeError} When the option is neither a function nor an object.
+ * @throws {VineError} `VINE_DATA_ONLY` when a static object is not data.
+ */
+function bindDefaultContext(option) {
+	if (option === undefined || option === null) return () => null;
+	if (typeof option === "function") {
+		return (path) => {
+			const answer = option();
+			return answer === undefined || answer === null ? null : validContext(answer, `the context resolver for '${path}'`);
+		};
+	}
+	if (typeof option !== "object") {
+		throw new TypeError("@cldmv/slothlet-vine: grow() context must be a plain object or a function when given");
+	}
+	const snapshot = validContext(option, "grow()");
+	return () => structuredClone(snapshot);
 }
 
 /**
