@@ -33,8 +33,10 @@ export const CODES = Object.freeze({
 	NO_LEAF: "VINE_NO_LEAF",
 	/**
 	 * The serving side's channel principal is not permitted to call this path — slothlet's rules said
-	 * no (or could not be asked), and the leaf was never invoked. Produced ONLY by a `serve()` that
-	 * bound a `principal`; a trusted-transport serve (no principal) never answers it.
+	 * no (or could not be asked), and the leaf was never invoked. Produced by a `serve()` that bound a
+	 * `principal`, and for a per-call requested context (#79) that was refused: by the serve's
+	 * `context` check or because it has none — and, locally by a grow, before sending one to a far
+	 * side that does not accept it.
 	 */
 	DENIED: "VINE_DENIED",
 	/**
