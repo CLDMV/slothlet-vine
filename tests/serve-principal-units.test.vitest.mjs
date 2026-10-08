@@ -838,3 +838,63 @@ describe("no principal — the v1 trusted-transport behaviour is pinned, byte fo
 		expect((await call(channel, "math.add")).type).toBe("result");
 	});
 });
+
+describe("requested context (#79) — the scope seam, on a fake instance", () => {
+	/**
+	 * Deliver one call frame carrying a requested context and return its terminal frame.
+	 * @param {object} channel - The fake channel.
+	 * @param {object} context - The requested context.
+	 * @returns {Promise<object>} The `result` / `error` frame.
+	 */
+	async function callWith(channel, context) {
+		const before = channel.sent.length;
+		channel.deliver({ type: "call", callId: "c1", path: "math.add", args: [1, 2], context });
+		await tick();
+		return channel.sent.slice(before).find((frame) => frame.type === "result" || frame.type === "error");
+	}
+
+	it("without a principal: the accepted keys open a protected scope around the leaf", async () => {
+		const { api, channel } = await served({}, { context: (requested) => requested });
+		expect((await callWith(channel, { project: "A" })).value).toBe(3);
+		expect(api.scopes).toEqual([{ context: { project: "A" }, protect: ["project"] }]);
+		expect(api.log).toEqual(["scope:enter", "leaf", "scope:exit"]);
+	});
+
+	it("with a principal: merged under the principal's keys, all protected, the gate inside", async () => {
+		const { api, channel } = await served(
+			{},
+			{ principal: { path: "remote.renderer", context: { actor: "u1" } }, context: () => ({ project: "A", actor: "forged" }) }
+		);
+		expect((await callWith(channel, { project: "A" })).value).toBe(3);
+		expect(api.scopes).toEqual([{ context: { project: "A", actor: "u1" }, protect: ["project", "actor"] }]);
+		expect(api.log).toEqual(["scope:enter", "gate:remote.renderer->math.add", "leaf", "scope:exit"]);
+	});
+
+	it("a scope that never runs fn is VINE_DENIED — nothing runs outside the accepted scope", async () => {
+		let probed = false;
+		const { api, channel } = await served(
+			{
+				scope: async (options) => {
+					if (!probed) {
+						probed = true;
+						return options.fn(); // the setup probe
+					}
+					return undefined;
+				}
+			},
+			{ context: (requested) => requested }
+		);
+		const frame = await callWith(channel, { project: "A" });
+		expect(frame.error.code).toBe(CODES.DENIED);
+		expect(api.log).not.toContain("leaf");
+	});
+
+	it("a context check alone does not need the permission system — only a working scope", async () => {
+		await expect(
+			serve(fakeApi({ noPermissions: true, noCheckCall: true, noResolveLevel: true }), fakeChannel(), { context: (r) => r })
+		).resolves.toBeTruthy();
+		await expect(serve(fakeApi({ noScope: true }), fakeChannel(), { context: (r) => r })).rejects.toThrow(
+			/context check needs a working api\.slothlet\.context\.scope\(\)/
+		);
+	});
+});

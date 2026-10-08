@@ -21,7 +21,7 @@ Only `send` and `onMessage` are required. `close`, `onClose`, and `capabilities`
 
 ### The rules, restated as things to actually do
 
-- **`send`/`onMessage` carry plain frame objects.** If your medium structured-clones (like `postMessage`), pass frames through untouched and declare `capabilities.structuredClone: true, codec: "none"`. If your medium only carries bytes/strings, own your encode/decode internally and declare `codec: "json"` (or whatever you use) — see `transport/websocket` for the reference byte transport.
+- **`send`/`onMessage` carry plain frame objects.** If your medium structured-clones (like `postMessage`), pass frames through untouched and declare `capabilities.structuredClone: true, codec: "none"`. If your medium only carries bytes/strings, own your encode/decode internally and declare `codec: "json"` (or whatever you use) — see `transport/websocket` for the reference byte transport. Carry every key of a frame, including ones you don't recognize: frames grow optional keys without a version bump (a `call`'s requested `context` and a `surface`'s `context: true` flag, for example), and a transport that copies only the keys it knows would silently strip them.
 - **`onMessage`/`onClose` are single-handler registrations — last write wins.** A second `onMessage(fn)` call replaces the first, it doesn't add a second listener.
 - **A handler must never be allowed to throw into your transport.** Wrap every call to a registered handler:
 

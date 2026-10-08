@@ -139,6 +139,14 @@ describe("frame schema", () => {
 		expect(Object.keys(errorFrame("n#1", new Error("x")).error)).toEqual(expect.arrayContaining(error.properties.error.required));
 	});
 
+	it("declares the requested-context keys (#79) as optional — the v1 shapes stay valid", () => {
+		const [surface, call] = schema.oneOf;
+		expect(surface.properties.context.const).toBe(true);
+		expect(surface.required).not.toContain("context");
+		expect(call.properties.context.type).toBe("object");
+		expect(call.required).not.toContain("context");
+	});
+
 	it("requires a non-empty callId, matching parseFrame's own rejection", () => {
 		const [, call, result, error] = schema.oneOf;
 		expect(call.properties.callId.minLength).toBe(1);
