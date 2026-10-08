@@ -10,7 +10,11 @@
 			"properties": {
 				"type": { "const": "surface" },
 				"v": { "const": 1 },
-				"leaves": { "type": "array", "items": { "type": "string" } }
+				"leaves": { "type": "array", "items": { "type": "string" } },
+				"context": {
+					"const": true,
+					"description": "present only when the serve accepts a per-call requested context (#79); an older grow ignores it"
+				}
 			}
 		},
 		{
@@ -20,7 +24,11 @@
 				"type": { "const": "call" },
 				"callId": { "type": "string", "minLength": 1 },
 				"path": { "type": "string", "description": "dotted leaf path exactly as served, e.g. exts.pdfViewer.open" },
-				"args": { "type": "array" }
+				"args": { "type": "array" },
+				"context": {
+					"type": "object",
+					"description": "optional per-call REQUESTED context (#79): plain data, never identity; accepted, narrowed or refused by the serve's context check. Sent only to a serve whose surface advertised context: true"
+				}
 			}
 		},
 		{
