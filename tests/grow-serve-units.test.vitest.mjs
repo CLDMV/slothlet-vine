@@ -47,7 +47,7 @@ function fakeChannel(behaviour = {}) {
 				throw new Error("this fake transport refuses a re-registration");
 			}
 			handler = fn;
-			if (behaviour.syncSurface) fn({ type: "surface", v: 1, leaves: behaviour.leaves ?? ["far.leaf"] });
+			if (behaviour.syncSurface) fn({ type: "surface", v: 1, leaves: behaviour.leaves ?? ["far.leaf"], ...behaviour.surface });
 		},
 		/**
 		 * Push a frame at the registered handler, as the transport would.
@@ -508,6 +508,23 @@ describe("grow — stub dispatch edge cases", () => {
 		});
 		await expect(api.far.leaf(1)).rejects.toMatchObject({ code: CODES.BAD_FRAME });
 		await expect(api.far.leaf(1)).rejects.toThrow(/a bare string, not an Error/);
+		await link.close();
+	});
+
+	it("a context.get() that throws is no extent — the link default applies (#79)", async () => {
+		const api = fakeApi();
+		api.slothlet.context = {
+			get() {
+				throw new Error("no context here");
+			}
+		};
+		const channel = fakeChannel({ syncSurface: true, surface: { context: true } });
+		const link = await grow(api, channel, { budgetMs: 500, context: { project: "A" } });
+		const pending = api.far.leaf(1);
+		const call = channel.sent.find((frame) => frame.type === "call");
+		expect(call.context).toEqual({ project: "A" });
+		channel.deliver({ type: "result", callId: call.callId, value: "ok" });
+		expect(await pending).toBe("ok");
 		await link.close();
 	});
 

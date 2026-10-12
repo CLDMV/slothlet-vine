@@ -20,8 +20,23 @@ describe("CODES", () => {
 	it("carries every code the design names, frozen", () => {
 		expect(Object.isFrozen(CODES)).toBe(true);
 		expect(Object.values(CODES)).toEqual(
-			expect.arrayContaining(["VINE_GONE", "VINE_BUDGET", "VINE_CLOSED", "VINE_DATA_ONLY", "VINE_BAD_FRAME", "VINE_NO_LEAF"])
+			expect.arrayContaining([
+				"VINE_GONE",
+				"VINE_BUDGET",
+				"VINE_CLOSED",
+				"VINE_DATA_ONLY",
+				"VINE_BAD_FRAME",
+				"VINE_NO_LEAF",
+				"VINE_DENIED",
+				"VINE_CONTEXT",
+				"VINE_REMOTE"
+			])
 		);
+	});
+
+	it("keeps a refused requested context (VINE_CONTEXT, #79) distinct from a rules refusal (VINE_DENIED)", () => {
+		expect(CODES.CONTEXT).toBe("VINE_CONTEXT");
+		expect(CODES.CONTEXT).not.toBe(CODES.DENIED);
 	});
 });
 

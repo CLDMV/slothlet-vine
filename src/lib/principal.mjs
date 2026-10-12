@@ -13,7 +13,7 @@
  *
  */
 
-import { isSafePath } from "./frame.mjs";
+import { isPlainObject, isSafePath } from "./frame.mjs";
 
 /**
  * @typedef {object} Principal
@@ -30,19 +30,6 @@ import { isSafePath } from "./frame.mjs";
  *   normalized principal for the string / object forms, or the host's own resolver function for the
  *   function form (its answer is per frame, so there is no single normalized value to show).
  */
-
-/**
- * Is `value` a plain data object — `{}` / `Object.create(null)` — as opposed to an array, a class
- * instance, or a primitive? Only plain data gets full-depth `protect` from slothlet's context scope,
- * and a principal's context is deep-cloned per scope, so anything else is refused up front.
- * @param {unknown} value - Candidate.
- * @returns {boolean} True for a plain object.
- */
-function isPlainObject(value) {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-	const proto = Object.getPrototypeOf(value);
-	return proto === Object.prototype || proto === null;
-}
 
 /**
  * Normalize one principal VALUE (a string or a `{ path, context? }` object) into a frozen
@@ -151,8 +138,23 @@ export async function assertPrincipalSupport(api, needs, who) {
 				`@cldmv/slothlet ≥ 3.22.0 is required to gate calls for a channel principal`
 		);
 	}
-	if (needs.scope) await probe(api, who, "scope", () => api.slothlet.context.scope({ context: {}, fn: () => true }));
-	if (needs.run) await probe(api, who, "run", () => api.slothlet.context.run({}, () => true));
+	if (needs.scope) await assertScopeSupport(api, who, "a principal");
+	if (needs.run) await probe(api, who, "run", "a principal", () => api.slothlet.context.run({}, () => true));
+}
+
+/**
+ * Require a WORKING `api.slothlet.context.scope()` — probed with an empty scope, because a
+ * `scope: false` instance still exposes `scope` as a function that rejects `SCOPE_DISABLED`. Used for
+ * a principal (every call runs inside its scope) and for a `context` check on `serve()` (#79: every
+ * call carrying an accepted requested context runs inside a scope holding it).
+ * @param {object} api - The slothlet instance.
+ * @param {string} who - `serve` / `grow`, for the error message.
+ * @param {string} feature - What needs the scope (`a principal`, `a context check`), for the message.
+ * @returns {Promise<void>} Resolves when the probe answered `true`.
+ * @throws {TypeError} When the probe failed.
+ */
+export async function assertScopeSupport(api, who, feature) {
+	await probe(api, who, "scope", feature, () => api.slothlet.context.scope({ context: {}, fn: () => true }));
 }
 
 /**
@@ -161,11 +163,12 @@ export async function assertPrincipalSupport(api, needs, who) {
  * @param {object} api - The slothlet instance.
  * @param {string} who - `serve` / `grow`.
  * @param {"scope"|"run"} name - Which `api.slothlet.context.*` function is being probed.
+ * @param {string} feature - What needs it, for the message.
  * @param {() => unknown} attempt - The probe call.
  * @returns {Promise<void>} Resolves when the probe answered `true`.
  * @throws {TypeError} When the probe threw, rejected, or answered anything but `true`.
  */
-async function probe(api, who, name, attempt) {
+async function probe(api, who, name, feature, attempt) {
 	let reason;
 	try {
 		if (typeof api.slothlet?.context?.[name] === "function" && (await attempt()) === true) return;
@@ -174,7 +177,7 @@ async function probe(api, who, name, attempt) {
 		reason = err?.message ?? String(err);
 	}
 	throw new TypeError(
-		`@cldmv/slothlet-vine: ${who}() with a principal needs a working api.slothlet.context.${name}() to run under the principal's context — ${reason}`
+		`@cldmv/slothlet-vine: ${who}() with ${feature} needs a working api.slothlet.context.${name}() to run each call under its context — ${reason}`
 	);
 }
 

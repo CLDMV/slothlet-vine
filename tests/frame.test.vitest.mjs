@@ -19,7 +19,9 @@ import {
 	UNSAFE_SEGMENTS,
 	callFrame,
 	errorFrame,
+	findContextFault,
 	findFunctionArg,
+	isPlainObject,
 	isSafePath,
 	isSafeSegment,
 	parseFrame,
@@ -237,5 +239,66 @@ describe("parseFrame", () => {
 		const polluted = JSON.parse('{"type":"result","callId":"n#1","value":1,"__proto__":{"pwned":true}}');
 		expect(parseFrame(polluted)).toEqual({ type: "result", callId: "n#1", value: 1 });
 		expect({}.pwned).toBeUndefined();
+	});
+});
+
+describe("requested context (#79) — frames and the data-only rules", () => {
+	it("a surface frame advertises `context: true` only when asked, and is the v1 frame otherwise", () => {
+		expect(surfaceFrame(["a"])).not.toHaveProperty("context");
+		expect(surfaceFrame(["a"], { context: false })).not.toHaveProperty("context");
+		expect(surfaceFrame(["a"], { context: true })).toEqual({ type: "surface", v: FRAME_VERSION, leaves: ["a"], context: true });
+	});
+
+	it("a call frame carries `context` only when one is given", () => {
+		expect(callFrame("n#1", "a.b", [])).not.toHaveProperty("context");
+		expect(callFrame("n#1", "a.b", [], null)).not.toHaveProperty("context");
+		expect(callFrame("n#1", "a.b", [], { project: "A" })).toEqual({
+			type: "call",
+			callId: "n#1",
+			path: "a.b",
+			args: [],
+			context: { project: "A" }
+		});
+	});
+
+	it("parseFrame keeps a surface's `context` only when it is literally true", () => {
+		expect(parseFrame({ type: "surface", v: 1, leaves: [], context: true }).context).toBe(true);
+		expect(parseFrame({ type: "surface", v: 1, leaves: [], context: "yes" })).not.toHaveProperty("context");
+		expect(parseFrame({ type: "surface", v: 1, leaves: [] })).not.toHaveProperty("context");
+	});
+
+	it("parseFrame carries a call's `context` through raw (validated by the serve); null / undefined mean none", () => {
+		expect(parseFrame({ type: "call", callId: "c", path: "a.b", args: [], context: { p: 1 } }).context).toEqual({ p: 1 });
+		expect(parseFrame({ type: "call", callId: "c", path: "a.b", args: [], context: "junk" }).context).toBe("junk");
+		expect(parseFrame({ type: "call", callId: "c", path: "a.b", args: [], context: null })).not.toHaveProperty("context");
+		expect(parseFrame({ type: "call", callId: "c", path: "a.b", args: [] })).not.toHaveProperty("context");
+	});
+
+	it("isPlainObject accepts {} and null-prototype objects only", () => {
+		expect(isPlainObject({})).toBe(true);
+		expect(isPlainObject(Object.create(null))).toBe(true);
+		for (const value of [null, undefined, [], "s", 1, new Date(), new Map(), new (class X {})()]) expect(isPlainObject(value)).toBe(false);
+	});
+
+	it("findContextFault: plain data passes; a non-plain value, a function anywhere, or an un-cloneable value is named", () => {
+		expect(findContextFault({ project: "A", when: new Date(0), tags: new Set(["x"]), nested: { list: [1, 2] } })).toBeNull();
+		expect(findContextFault([1])).toBe("context");
+		expect(findContextFault("A")).toBe("context");
+		expect(findContextFault(null)).toBe("context");
+		expect(findContextFault({ a: { b: [0, () => 1] } })).toBe("context.a.b[1]");
+		expect(findContextFault({ s: Symbol("x") })).toBe("context");
+		expect(findContextFault({ w: new WeakMap() })).toBe("context");
+	});
+
+	it("findContextFault never throws on a hostile value", () => {
+		const hostile = new Proxy(
+			{},
+			{
+				getPrototypeOf() {
+					throw new Error("boom");
+				}
+			}
+		);
+		expect(findContextFault(hostile)).toBe("context");
 	});
 });

@@ -152,22 +152,68 @@ export function findFunctionArg(args) {
 
 /**
  * Build the `surface` frame — the served leaf manifest, sent once when a serve starts.
+ *
+ * `context: true` is added ONLY when the serve accepts a per-call requested context (#79) — a serve
+ * with a `context` check. Without one the frame is byte for byte the v1 frame. An older grow drops
+ * the unknown key; a newer grow refuses to send a requested context to a far side that did not
+ * advertise it, so a client never believes a call is scoped when the far side would ignore it.
  * @param {string[]} leaves - Dotted callable paths being served.
- * @returns {{ type: "surface", v: number, leaves: string[] }} The frame.
+ * @param {{ context?: boolean }} [features] - What this serve accepts beyond the v1 call frame.
+ * @returns {{ type: "surface", v: number, leaves: string[], context?: true }} The frame.
  */
-export function surfaceFrame(leaves) {
-	return { type: "surface", v: FRAME_VERSION, leaves: [...leaves] };
+export function surfaceFrame(leaves, features = {}) {
+	const frame = { type: "surface", v: FRAME_VERSION, leaves: [...leaves] };
+	if (features.context === true) frame.context = true;
+	return frame;
 }
 
 /**
- * Build a `call` frame.
+ * Build a `call` frame. The `context` key — the caller's per-call REQUESTED context (#79) — is present
+ * only when one was given, so a call without one is byte for byte the v1 frame.
  * @param {string} callId - Correlation id, unique per grow-side link.
  * @param {string} path - The dotted leaf path exactly as served.
  * @param {unknown[]} args - Data-only arguments.
- * @returns {{ type: "call", callId: string, path: string, args: unknown[] }} The frame.
+ * @param {object|null} [context] - A data-only plain object, already validated by {@link findContextFault}.
+ * @returns {{ type: "call", callId: string, path: string, args: unknown[], context?: object }} The frame.
  */
-export function callFrame(callId, path, args) {
-	return { type: "call", callId, path, args };
+export function callFrame(callId, path, args, context = null) {
+	const frame = { type: "call", callId, path, args };
+	if (context !== null && context !== undefined) frame.context = context;
+	return frame;
+}
+
+/**
+ * Is `value` a plain data object — `{}` / `Object.create(null)` — as opposed to an array, a class
+ * instance, or a primitive?
+ * @param {unknown} value - Candidate.
+ * @returns {boolean} True for a plain object.
+ */
+export function isPlainObject(value) {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+	const proto = Object.getPrototypeOf(value);
+	return proto === Object.prototype || proto === null;
+}
+
+/**
+ * The data-only rules for a requested context (#79) — the same rules a call's arguments are held to,
+ * plus a shape: it must be a PLAIN object (it is merged key by key into a context scope, and only
+ * plain data gets full-depth `protect` there), it may hold no function anywhere, and it must survive
+ * a structured clone (a Symbol or a WeakMap is not data either). Never invokes user code beyond what
+ * `structuredClone` itself does, and never throws.
+ * @param {unknown} value - The candidate requested context.
+ * @returns {string|null} A location naming the first fault (`context`, `context.onDone`), or `null`
+ *   when the value is acceptable.
+ */
+export function findContextFault(value) {
+	try {
+		if (!isPlainObject(value)) return "context";
+		const functionAt = findFunctionArg([value]);
+		if (functionAt !== null) return `context${functionAt.slice("arg[0]".length)}`;
+		structuredClone(value);
+		return null;
+	} catch {
+		return "context";
+	}
 }
 
 /**
@@ -277,7 +323,10 @@ export function parseFrame(message) {
 				if (isSafePath(leaf)) leaves.push(leaf);
 				else unsafe.push(typeof leaf === "string" ? leaf : String(leaf));
 			}
-			return { type: "surface", v: FRAME_VERSION, leaves, unsafe };
+			const frame = { type: "surface", v: FRAME_VERSION, leaves, unsafe };
+			// #79: the serve accepts a requested context. Only a literal `true` counts.
+			if (message.context === true) frame.context = true;
+			return frame;
 		}
 
 		// Event-forwarding frames key on `subId`, not `callId`. `subscriberPath` is UNTRUSTED here, but
@@ -324,7 +373,13 @@ export function parseFrame(message) {
 		if (type === "call") {
 			if (!isSafePath(message.path)) return null;
 			if (!Array.isArray(message.args)) return null;
-			return { type: "call", callId, path: message.path, args: [...message.args] };
+			const frame = { type: "call", callId, path: message.path, args: [...message.args] };
+			// #79: a requested context is carried through RAW — `null` / `undefined` mean "none", anything
+			// else is validated by the serve, which answers `VINE_DATA_ONLY` for a bad one rather than
+			// dropping the frame (a dropped call would only settle on the caller's budget).
+			const context = message.context;
+			if (context !== undefined && context !== null) frame.context = context;
+			return frame;
 		}
 		if (type === "result") {
 			return { type: "result", callId, value: message.value };
