@@ -69,7 +69,7 @@ Statements, branches, functions, and lines — held to the same bar as slothlet 
 
 ### Requirements
 
-- A slothlet instance to grow from or serve — `@cldmv/slothlet` `>=3.14.0` (peer dependency)
+- A slothlet instance to grow from or serve — `@cldmv/slothlet` `>=3.22.0` (peer dependency)
 - Node.js `^20.19.0 || >=22.13.0`
 - ESM (`import`) or CommonJS (`require`). Every entry point (the root, each `transport/*`, and `testing`) ships a built `.mjs` and a thin `.cjs` that loads it through Node's synchronous `require(esm)`, so both module systems get the same module instance. On a Node.js without `require(esm)`, `require()` throws `ERR_REQUIRE_ESM`; use `import()` there instead.
 - The `websocket` transport additionally needs the optional peer `ws` `>=8.0.0` — only if you import it
