@@ -92,7 +92,7 @@ describe("CommonJS entries (src)", () => {
 				thrown = error;
 			}
 			expect(thrown?.code).toBe("ERR_REQUIRE_ESM");
-			expect(thrown?.message).toMatch(/^@cldmv\/slothlet-vine\/transport\/loopback: require\(\) needs Node\.js \^20\.19\.0 or >=22\.13\.0/);
+			expect(thrown?.message).toMatch(/^@cldmv\/slothlet-vine\/transport\/loopback: require\(\) needs Node\.js >=22\.22\.0/);
 		});
 	});
 });

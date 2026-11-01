@@ -20,7 +20,7 @@
 // this file verbatim into dist/ next to the built .mjs.
 if (!process.features?.require_module) {
 	const error = new Error(
-		`@cldmv/slothlet-vine: require() needs Node.js ^20.19.0 or >=22.13.0 (this is ${process.version}). On older Node.js, load the package with import() instead.`
+		`@cldmv/slothlet-vine: require() needs Node.js >=22.22.0 (this is ${process.version}). On older Node.js, load the package with import() instead.`
 	);
 	error.code = "ERR_REQUIRE_ESM";
 	throw error;

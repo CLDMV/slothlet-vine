@@ -112,7 +112,7 @@
 		"./package.json": "./package.json"
 	},
 	"engines": {
-		"node": "^20.19.0 || >=22.13.0"
+		"node": ">=22.22.0"
 	},
 	"scripts": {
 		"build": "tsup",
