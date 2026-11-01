@@ -69,8 +69,9 @@ Statements, branches, functions, and lines — held to the same bar as slothlet 
 
 ### Requirements
 
-- A slothlet instance to grow from or serve — `@cldmv/slothlet` `>=3.14.0` (peer dependency)
-- ESM (`import`); CommonJS interop follows whatever your bundler/runtime provides for a `"type": "module"` package
+- A slothlet instance to grow from or serve — `@cldmv/slothlet` `>=3.22.0` (peer dependency)
+- Node.js `>=22.22.0`
+- ESM (`import`) or CommonJS (`require`). Every entry point (the root, each `transport/*`, and `testing`) ships a built `.mjs` and a thin `.cjs` that loads it through Node's synchronous `require(esm)`, so both module systems get the same module instance. On a Node.js without `require(esm)`, `require()` throws `ERR_REQUIRE_ESM`; use `import()` there instead.
 - The `websocket` transport additionally needs the optional peer `ws` `>=8.0.0` — only if you import it
 
 ### Install
@@ -122,7 +123,7 @@ Swap `transport/loopback` for any of the other four built-in transports, or your
 
 ## 📚 Documentation
 
-`docs/` isn't included in the published npm package (only `src`, `schemas`, `README.md`, and `LICENSE` ship — see [DESIGN.md](https://github.com/CLDMV/slothlet-vine/blob/master/docs/DESIGN.md)), so every link below is absolute and works the same from npmjs.com, an editor previewing the installed package, or GitHub itself.
+`docs/` isn't included in the published npm package (only the built `dist/`, `schemas`, `README.md`, and `LICENSE` ship), so every link below is absolute and works the same from npmjs.com, an editor previewing the installed package, or GitHub itself.
 
 ### Reference
 
@@ -139,6 +140,20 @@ Swap `transport/loopback` for any of the other four built-in transports, or your
 - **[Using a Vine in the Browser](https://github.com/CLDMV/slothlet-vine/blob/master/docs/BROWSER.md)** — a full Web Worker walkthrough with the `post-message` transport.
 
 [![CodeFactor]][codefactor_url] [![npms.io score]][npms_url] [![npm unpacked size]][npm_size_url] [![Repo size]][repo_size_url]
+
+---
+
+## 🛠 Working From a Checkout
+
+The published package runs from the built `dist/`. In a clone of this repository, the `slothlet-vine-dev` export condition switches every entry point to the `src/` files instead:
+
+| Run                                                        | Resolves to                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------ |
+| `node app.mjs`                                             | `dist/` (`ERR_MODULE_NOT_FOUND` until `npm run build`) |
+| `node --conditions=slothlet-vine-dev app.mjs`              | `src/`                                                 |
+| `NODE_OPTIONS=--conditions=slothlet-vine-dev node app.mjs` | `src/`                                                 |
+
+`npm test` runs the vitest suite against `src/` (the vitest config passes the condition), then builds and runs `tests/cjs/entry.test.cjs` with `node --test` against `dist/`.
 
 ---
 
