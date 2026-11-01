@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:22-07:00 (1790968822)
+ *	@Last modified time: 2026-11-01T12:10:07-08:00 (1793563807)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -51,10 +51,24 @@ describe("package surface", () => {
 
 	it("package.json exports map lists every published subpath", () => {
 		const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"));
-		for (const name of ALL_TRANSPORTS) expect(pkg.exports[`./transport/${name}`]).toBe(`./src/transport/${name}.mjs`);
-		expect(pkg.exports["."]).toBe("./src/index.mjs");
-		expect(pkg.exports["./testing"]).toBe("./src/testing/conformance.mjs");
+		/** The export entry for a source path: dev condition → src/, otherwise the built dist/ files. */
+		const entry = (src, dist = src) => ({
+			"slothlet-vine-dev": { import: `./src/${src}.mjs`, require: `./src/${src}.cjs` },
+			import: `./dist/${dist}.mjs`,
+			require: `./dist/${dist}.cjs`
+		});
+		for (const name of ALL_TRANSPORTS) expect(pkg.exports[`./transport/${name}`]).toEqual(entry(`transport/${name}`));
+		expect(pkg.exports["."]).toEqual(entry("index"));
+		expect(pkg.exports["./testing"]).toEqual(entry("testing/conformance"));
+		expect(pkg.main).toBe("./dist/index.cjs");
+		expect(pkg.module).toBe("./dist/index.mjs");
 		expect(pkg.peerDependencies["@cldmv/slothlet"]).toBeTruthy();
+	});
+
+	it("publishes the build, not the source", () => {
+		const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"));
+		expect(pkg.files).toEqual(["dist/", "!dist/**/*.map", "schemas/"]);
+		expect(pkg.engines.node).toBe("^20.19.0 || >=22.13.0");
 	});
 });
 

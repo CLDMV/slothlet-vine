@@ -39,7 +39,7 @@ jobs:
         uses: CLDMV/.github/.github/workflows/reusable-bundle-size.yml@v4
         with:
             build_command: "npm run build:ci"
-            dist_paths: "src/**,schemas/**"
+            dist_paths: "dist/**.mjs,dist/**.cjs,schemas/**"
             # warning_pct: 5
             # warning_bytes: 500
             # comment_mode: "update"
