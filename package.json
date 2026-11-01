@@ -138,6 +138,10 @@
 			"optional": true
 		}
 	},
+	"overrides": {
+		"katex": ">=0.19.1 <1.0.0",
+		"minimatch": "^11.0.3"
+	},
 	"devDependencies": {
 		"@cldmv/configs": "^1.3.0",
 		"@cldmv/eslint-plugin-jsonv": "^1.0.17",
