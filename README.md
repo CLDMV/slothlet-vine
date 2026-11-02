@@ -16,18 +16,18 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ## ✨ What's New
 
-### Latest: v1.3.0 (October 2026)
+### Latest: v1.4.0 (November 2026)
 
-- **Per-call requested context ([#80](https://github.com/CLDMV/slothlet-vine/pull/80))** — `link.with(context, fn)` and `grow({ context })` attach a data-only context to individual calls, such as the project a browser window has open. A new `serve({ context })` host check accepts, narrows or refuses it (a refusal is the new `VINE_CONTEXT` code), and whatever it accepts joins the call's scope under the principal's keys, write-protected, with no per-connection state on the server.
-- **Opt-in and wire compatible** — a serve without a `context` check and a grow that sets none behave exactly as in v1.2.x; the frame version and the `@cldmv/slothlet >=3.22.0` peer range are unchanged. A serve with no check refuses a frame that carries a requested context instead of ignoring it.
-- [View full v1.3.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.3.0.md)
+- **CommonJS entries and a real build ([#101](https://github.com/CLDMV/slothlet-vine/pull/101))** — every entry point (the root, each `transport/*` and `testing`) now ships a tsup-built ESM bundle in `dist/` plus a thin `.cjs` that loads it through Node's `require(esm)`, so `require()` works directly and gets the same module instance as `import`. A `slothlet-vine-dev` export condition points a checkout at `src/`.
+- **Node.js `>=22.22.0` is now required** — v1.3.0 declared no Node.js requirement. The vine runtime, frame format and `@cldmv/slothlet >=3.22.0` peer range are unchanged; stay on v1.3.0 if you can't upgrade Node.js.
+- [View full v1.4.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.4.0.md)
 
 ### Recent Releases
 
+- **v1.3.0** (October 2026) — per-call requested context: `link.with(context, fn)` / `grow({ context })` on the caller, a `serve({ context })` host check on the server, and the new `VINE_CONTEXT` code; opt-in and wire compatible (#80) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.3.0.md))
 - **v1.2.2** (October 2026) — dev-tooling bump only: `@cldmv/fix-headers` 2.2.0 and `@cldmv/configs` 1.2.4, so a header-only rewrite keeps `@Last modified by`; no runtime change (#72, #75) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.2.md))
 - **v1.2.1** (October 2026) — dev-tooling dependency refresh in the lockfile only (`vitest` 5.0.3, `@cldmv/vitest-runner` 1.5.1, jsonv lint/format packages, `ws` for the transport tests); no runtime changes ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.1.md))
 - **v1.2.0** (October 2026) — channel principal: `serve({ principal })` judges every call and subscription as a transport-authenticated identity, plus a per-call `serve({ around })` wrapper; requires `@cldmv/slothlet >=3.22.0` ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.0.md))
-- **v1.1.3** (September 2026) — transports buffer frames that arrive before `grow()`/`serve()` registers a handler, so attaching after an `await` no longer loses the surface frame ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.1.3.md))
 
 📚 **For complete version history and detailed release notes, see the [docs/changelog/](https://github.com/CLDMV/slothlet-vine/tree/master/docs/changelog/) folder.**
 
