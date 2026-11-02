@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-11-01T12:10:00-08:00 (1793563800)
+ *	@Last modified time: 2026-11-01T16:35:23-08:00 (1793579723)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -92,7 +92,7 @@ describe("CommonJS entries (src)", () => {
 				thrown = error;
 			}
 			expect(thrown?.code).toBe("ERR_REQUIRE_ESM");
-			expect(thrown?.message).toMatch(/^@cldmv\/slothlet-vine\/transport\/loopback: require\(\) needs Node\.js >=22\.22\.0/);
+			expect(thrown?.message).toMatch(/^@cldmv\/slothlet-vine\/transport\/loopback: require\(\) needs Node\.js >=22\.15\.0/);
 		});
 	});
 });

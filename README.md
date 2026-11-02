@@ -16,18 +16,17 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ## ✨ What's New
 
-### Latest: v1.4.0 (November 2026)
+### Latest: v1.4.1 (November 2026)
 
-- **CommonJS entries and a real build ([#101](https://github.com/CLDMV/slothlet-vine/pull/101))** — every entry point (the root, each `transport/*` and `testing`) now ships a tsup-built ESM bundle in `dist/` plus a thin `.cjs` that loads it through Node's `require(esm)`, so `require()` works directly and gets the same module instance as `import`. A `slothlet-vine-dev` export condition points a checkout at `src/`.
-- **Node.js `>=22.22.0` is now required** — v1.3.0 declared no Node.js requirement. The vine runtime, frame format and `@cldmv/slothlet >=3.22.0` peer range are unchanged; stay on v1.3.0 if you can't upgrade Node.js.
-- [View full v1.4.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.4.0.md)
+- **`engines.node` is now `>=22.15.0` ([#107](https://github.com/CLDMV/slothlet-vine/pull/107))** — v1.4.0 declared `>=22.22.0`, the floor of the development toolchain rather than of the package. The runtime floor is now the one `@cldmv/slothlet` declares, and `import` and `require()` both work from 22.15.0. The 22.22.0 toolchain floor moves to `devEngines`, so it only applies when working on this repository. The vine runtime is unchanged.
+- [View full v1.4.1 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.4.1.md)
 
 ### Recent Releases
 
+- **v1.4.0** (November 2026) — CommonJS entries for every subpath and a real tsup build into `dist/`, plus a `slothlet-vine-dev` condition for checkouts; declared Node.js `>=22.22.0` (#101) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.4.0.md))
 - **v1.3.0** (October 2026) — per-call requested context: `link.with(context, fn)` / `grow({ context })` on the caller, a `serve({ context })` host check on the server, and the new `VINE_CONTEXT` code; opt-in and wire compatible (#80) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.3.0.md))
 - **v1.2.2** (October 2026) — dev-tooling bump only: `@cldmv/fix-headers` 2.2.0 and `@cldmv/configs` 1.2.4, so a header-only rewrite keeps `@Last modified by`; no runtime change (#72, #75) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.2.md))
 - **v1.2.1** (October 2026) — dev-tooling dependency refresh in the lockfile only (`vitest` 5.0.3, `@cldmv/vitest-runner` 1.5.1, jsonv lint/format packages, `ws` for the transport tests); no runtime changes ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.1.md))
-- **v1.2.0** (October 2026) — channel principal: `serve({ principal })` judges every call and subscription as a transport-authenticated identity, plus a per-call `serve({ around })` wrapper; requires `@cldmv/slothlet >=3.22.0` ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.0.md))
 
 📚 **For complete version history and detailed release notes, see the [docs/changelog/](https://github.com/CLDMV/slothlet-vine/tree/master/docs/changelog/) folder.**
 
@@ -70,9 +69,10 @@ Statements, branches, functions, and lines — held to the same bar as slothlet 
 ### Requirements
 
 - A slothlet instance to grow from or serve — `@cldmv/slothlet` `>=3.22.0` (peer dependency)
-- Node.js `>=22.22.0`
-- ESM (`import`) or CommonJS (`require`). Every entry point (the root, each `transport/*`, and `testing`) ships a built `.mjs` and a thin `.cjs` that loads it through Node's synchronous `require(esm)`, so both module systems get the same module instance. On a Node.js without `require(esm)`, `require()` throws `ERR_REQUIRE_ESM`; use `import()` there instead.
+- Node.js `>=22.15.0` for `import`, the floor of the `@cldmv/slothlet` peer
+- `require()` works on the same versions (Node.js `>=22.15.0`). Every entry point (the root, each `transport/*`, and `testing`) ships a built `.mjs` and a thin `.cjs` that loads it through Node's synchronous `require(esm)`, so both module systems get the same module instance. On a Node.js without `require(esm)`, `require()` throws `ERR_REQUIRE_ESM`; use `import()` there instead.
 - The `websocket` transport additionally needs the optional peer `ws` `>=8.0.0` — only if you import it
+- Developing this package needs Node.js 22.22.0 or later (`devEngines`)
 
 ### Install
 
