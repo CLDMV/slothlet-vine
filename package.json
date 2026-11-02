@@ -1,6 +1,6 @@
 {
 	"name": "@cldmv/slothlet-vine",
-	"version": "1.3.0",
+	"version": "1.4.0",
 	"description": "Vines between slothlet api trees — location-transparent forwarding leaves over pluggable transports (Web Worker postMessage, worker_threads, process IPC, WebSocket), permission-gated by slothlet itself.",
 	"type": "module",
 	"license": "Apache-2.0",
@@ -24,11 +24,12 @@
 		"access": "public"
 	},
 	"sideEffects": false,
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
 	"files": [
-		"src",
-		"schemas",
-		"README.md",
-		"LICENSE"
+		"dist/",
+		"!dist/**/*.map",
+		"schemas/"
 	],
 	"repository": {
 		"type": "git",
@@ -51,23 +52,77 @@
 		"channel"
 	],
 	"exports": {
-		".": "./src/index.mjs",
-		"./transport/loopback": "./src/transport/loopback.mjs",
-		"./transport/post-message": "./src/transport/post-message.mjs",
-		"./transport/worker-threads": "./src/transport/worker-threads.mjs",
-		"./transport/process": "./src/transport/process.mjs",
-		"./transport/websocket": "./src/transport/websocket.mjs",
+		".": {
+			"slothlet-vine-dev": {
+				"import": "./src/index.mjs",
+				"require": "./src/index.cjs"
+			},
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./transport/loopback": {
+			"slothlet-vine-dev": {
+				"import": "./src/transport/loopback.mjs",
+				"require": "./src/transport/loopback.cjs"
+			},
+			"import": "./dist/transport/loopback.mjs",
+			"require": "./dist/transport/loopback.cjs"
+		},
+		"./transport/post-message": {
+			"slothlet-vine-dev": {
+				"import": "./src/transport/post-message.mjs",
+				"require": "./src/transport/post-message.cjs"
+			},
+			"import": "./dist/transport/post-message.mjs",
+			"require": "./dist/transport/post-message.cjs"
+		},
+		"./transport/worker-threads": {
+			"slothlet-vine-dev": {
+				"import": "./src/transport/worker-threads.mjs",
+				"require": "./src/transport/worker-threads.cjs"
+			},
+			"import": "./dist/transport/worker-threads.mjs",
+			"require": "./dist/transport/worker-threads.cjs"
+		},
+		"./transport/process": {
+			"slothlet-vine-dev": {
+				"import": "./src/transport/process.mjs",
+				"require": "./src/transport/process.cjs"
+			},
+			"import": "./dist/transport/process.mjs",
+			"require": "./dist/transport/process.cjs"
+		},
+		"./transport/websocket": {
+			"slothlet-vine-dev": {
+				"import": "./src/transport/websocket.mjs",
+				"require": "./src/transport/websocket.cjs"
+			},
+			"import": "./dist/transport/websocket.mjs",
+			"require": "./dist/transport/websocket.cjs"
+		},
+		"./testing": {
+			"slothlet-vine-dev": {
+				"import": "./src/testing/conformance.mjs",
+				"require": "./src/testing/conformance.cjs"
+			},
+			"import": "./dist/testing/conformance.mjs",
+			"require": "./dist/testing/conformance.cjs"
+		},
 		"./schemas/*": "./schemas/*",
-		"./package.json": "./package.json",
-		"./testing": "./src/testing/conformance.mjs"
+		"./package.json": "./package.json"
+	},
+	"engines": {
+		"node": ">=22.22.0"
 	},
 	"scripts": {
-		"build": "echo \"no build step - plain ESM package; stub kept because the reusable coverage-badge job runs npm run build unconditionally\"",
-		"build:ci": "echo \"no build step\"",
-		"test": "node tests/run-vitest.mjs",
+		"build": "tsup",
+		"build:ci": "npm run lint && npm run format:check && npm run build",
+		"prepack": "npm run build",
+		"test": "node tests/run-vitest.mjs && npm run test:dist",
+		"test:dist": "npm run build && node --conditions=slothlet-vine-dev --test tests/cjs/entry.test.cjs",
 		"test:watch": "vitest --config .configs/vitest.config.mjs",
 		"coverage": "node tests/run-vitest.mjs --coverage-quiet",
-		"ci:coverage": "npm run coverage",
+		"ci:coverage": "npm run coverage && npm run test:dist",
 		"lint": "eslint --config .configs/eslint.config.mjs .",
 		"lint:fix": "eslint --config .configs/eslint.config.mjs . --fix",
 		"format": "prettier --config .configs/.prettierrc --write .",
@@ -83,23 +138,29 @@
 			"optional": true
 		}
 	},
+	"overrides": {
+		"katex": ">=0.19.1 <1.0.0",
+		"minimatch": "^11.0.3"
+	},
 	"devDependencies": {
-		"@cldmv/configs": "^1.2.4",
-		"@cldmv/eslint-plugin-jsonv": "^1.0.3",
-		"@cldmv/fix-headers": "^2.2.0",
-		"@cldmv/jsonv": "^1.0.2",
-		"@cldmv/prettier-plugin-jsonv": "^1.0.1",
-		"@cldmv/slothlet": "^3.22.0",
-		"@cldmv/vitest-runner": "^1.2.0",
-		"@eslint/css": "^2.0.0",
+		"@cldmv/configs": "^1.3.0",
+		"@cldmv/eslint-plugin-jsonv": "^1.0.17",
+		"@cldmv/fix-headers": "^2.2.4",
+		"@cldmv/jsonv": "^1.1.5",
+		"@cldmv/prettier-plugin-jsonv": "^1.1.4",
+		"@cldmv/slothlet": "^3.23.0",
+		"@cldmv/vitest-runner": "^1.5.6",
+		"@eslint/css": "^2.0.1",
 		"@eslint/js": "^10.0.1",
-		"@eslint/json": "^2.0.1",
+		"@eslint/json": "^2.1.1",
 		"@eslint/markdown": "^8.0.3",
-		"@vitest/coverage-v8": "^5.0.0",
-		"eslint": "^10.9.0",
-		"globals": "^17.11.0",
-		"prettier": "^3.9.6",
-		"vitest": "^5.0.0",
-		"ws": "^8.21.3"
+		"@vitest/coverage-v8": "^5.0.5",
+		"eslint": "^10.14.0",
+		"globals": "^17.14.0",
+		"prettier": "^3.9.10",
+		"tsup": "^9.0.0",
+		"typescript": "^6.0.3",
+		"vitest": "^5.0.5",
+		"ws": "^8.22.1"
 	}
 }
