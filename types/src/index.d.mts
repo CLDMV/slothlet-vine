@@ -34,5 +34,80 @@ export type Channel = {
         buffersUntilHandler?: boolean;
     } | undefined;
 };
+/**
+ * The control plane a slothlet instance exposes at `api.slothlet`. Every surface is probed for the
+ * function it needs before use (older slothlet releases lack some), so the members are typed as the
+ * plain function maps vine calls through.
+ */
+export type SlothletControl = {
+    /**
+     * - Runtime api mutation (`add`, `remove`, `leaves`).
+     */
+    api: Record<string, Function>;
+    /**
+     * - Context propagation (`run`, `scope`).
+     */
+    context: Record<string, Function>;
+    /**
+     * - Event surface (`on`, `once`, `resolveLevel`).
+     */
+    event: Record<string, Function>;
+    /**
+     * - The permission system.
+     */
+    permissions: {
+        control: {
+            enabled?: unknown;
+        };
+        global: Record<string, Function>;
+    };
+    /**
+     * - The identity of the calling module, when slothlet provides one.
+     */
+    caller: Function;
+};
+/**
+ * A slothlet instance: the `slothlet` control plane plus the module api tree, whose shape is whatever
+ * the host composed (hence `unknown` members).
+ */
+export type SlothletApi = {
+    slothlet: SlothletControl;
+    [key: string]: unknown;
+};
+/**
+ * The trigger envelope delivered with every forwarded event.
+ */
+export type EventMeta = {
+    event: string;
+    at: number;
+    instanceID: string;
+};
+/**
+ * A forwarded-event listener: `payload` is `undefined` at the `notify` level.
+ */
+export type EventListener = (payload: unknown, meta: EventMeta) => void;
+/**
+ * The granted level of a forwarded subscription plus its unsubscribe.
+ */
+export type Subscription = {
+    level: "deny" | "notify" | "allow";
+    off: () => void;
+};
+/**
+ * The event-forwarding surface on a link or serving: slothlet's own `event.on` / `event.once` shape,
+ * async because the granted level is resolved across the boundary.
+ */
+export type EventSurface = {
+    /**
+     * - Subscribe.
+     */
+    on: (eventName: string, listener: EventListener, options?: {
+        once?: boolean;
+    }) => Promise<Subscription>;
+    /**
+     * - Subscribe for one delivery.
+     */
+    once: (eventName: string, listener: EventListener) => Promise<Subscription>;
+};
 export { grow, DEFAULT_BUDGET_MS } from "./grow.mjs";
 export { CODES, VineError, VineRemoteError, fromWire, toWire } from "./lib/errors.mjs";

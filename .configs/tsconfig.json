@@ -12,7 +12,6 @@
 		"lib": ["ES2022", "DOM"],
 		"types": ["node"],
 		"strict": true,
-		"noImplicitAny": false,
 		"skipLibCheck": true,
 		"resolveJsonModule": true,
 		"forceConsistentCasingInFileNames": true

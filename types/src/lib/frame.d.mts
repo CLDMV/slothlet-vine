@@ -64,9 +64,9 @@ export function callFrame(callId: string, path: string, args: unknown[], context
  * Is `value` a plain data object — `{}` / `Object.create(null)` — as opposed to an array, a class
  * instance, or a primitive?
  * @param {unknown} value - Candidate.
- * @returns {boolean} True for a plain object.
+ * @returns {value is Record<string, unknown>} True for a plain object.
  */
-export function isPlainObject(value: unknown): boolean;
+export function isPlainObject(value: unknown): value is Record<string, unknown>;
 /**
  * The data-only rules for a requested context (#79) — the same rules a call's arguments are held to,
  * plus a shape: it must be a PLAIN object (it is merged key by key into a context scope, and only
@@ -123,13 +123,9 @@ export function subFrame(subId: string, event: string, subscriberPath: string | 
  * of payloads.
  * @param {string} subId - Correlation id being answered.
  * @param {"deny"|"notify"|"allow"} level - The level the trusted side resolved for the subscriber.
- * @returns {{ type: "sub-ack", subId: string, level: string }} The frame.
+ * @returns {SubAckFrame} The frame.
  */
-export function subAckFrame(subId: string, level: "deny" | "notify" | "allow"): {
-    type: "sub-ack";
-    subId: string;
-    level: string;
-};
+export function subAckFrame(subId: string, level: "deny" | "notify" | "allow"): SubAckFrame;
 /**
  * Build an `event` frame — one forwarded delivery for a subscription. `payload` is present ONLY when
  * `withPayload` is true (an `allow` delivery); at `notify` it is omitted entirely, so a notify
@@ -173,8 +169,17 @@ export function parseFrame(message: unknown): Frame | null;
 /** The frame schema version carried on the `surface` frame. @type {number} */
 export const FRAME_VERSION: number;
 /**
- * A frame on the wire: a `type` discriminator plus the type's own fields (see the builders below).
- * @typedef {{ type: string, [key: string]: any }} Frame
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ *
+ * @typedef {{ type: "surface", v: number, leaves: string[], unsafe?: string[], context?: true }} SurfaceFrame
+ * @typedef {{ type: "call", callId: string, path: string, args: unknown[], context?: unknown }} CallFrame
+ * @typedef {{ type: "result", callId: string, value: unknown }} ResultFrame
+ * @typedef {{ type: "error", callId: string, error: object }} ErrorFrame
+ * @typedef {{ type: "sub", subId: string, event: string, subscriberPath: string|null }} SubFrame
+ * @typedef {{ type: "sub-ack", subId: string, level: "deny"|"notify"|"allow" }} SubAckFrame
+ * @typedef {{ type: "event", subId: string, event: string, at: number, instanceID: string, hasPayload?: boolean, payload?: unknown }} EventFrame
+ * @typedef {{ type: "unsub", subId: string }} UnsubFrame
+ * @typedef {SurfaceFrame|CallFrame|ResultFrame|ErrorFrame|SubFrame|SubAckFrame|EventFrame|UnsubFrame} Frame
  */
 /**
  * Path segments that are never mountable. `__proto__` / `constructor` / `prototype` walk the
@@ -186,9 +191,78 @@ export const UNSAFE_SEGMENTS: Set<string>;
 /** The delivery levels a subscription can be granted, carried on a `sub-ack`. @type {Set<string>} */
 export const SUB_LEVELS: Set<string>;
 /**
- * A frame on the wire: a `type` discriminator plus the type's own fields (see the builders below).
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
  */
-export type Frame = {
-    type: string;
-    [key: string]: any;
+export type SurfaceFrame = {
+    type: "surface";
+    v: number;
+    leaves: string[];
+    unsafe?: string[];
+    context?: true;
 };
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type CallFrame = {
+    type: "call";
+    callId: string;
+    path: string;
+    args: unknown[];
+    context?: unknown;
+};
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type ResultFrame = {
+    type: "result";
+    callId: string;
+    value: unknown;
+};
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type ErrorFrame = {
+    type: "error";
+    callId: string;
+    error: object;
+};
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type SubFrame = {
+    type: "sub";
+    subId: string;
+    event: string;
+    subscriberPath: string | null;
+};
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type SubAckFrame = {
+    type: "sub-ack";
+    subId: string;
+    level: "deny" | "notify" | "allow";
+};
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type EventFrame = {
+    type: "event";
+    subId: string;
+    event: string;
+    at: number;
+    instanceID: string;
+    hasPayload?: boolean;
+    payload?: unknown;
+};
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type UnsubFrame = {
+    type: "unsub";
+    subId: string;
+};
+/**
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ */
+export type Frame = SurfaceFrame | CallFrame | ResultFrame | ErrorFrame | SubFrame | SubAckFrame | EventFrame | UnsubFrame;

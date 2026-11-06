@@ -36,7 +36,7 @@ import { assertPrincipalSupport, assertScopeSupport, bindPrincipal, gate } from 
  * `api.slothlet.api.leaves()` is async — so `serve` returns a Promise for the documented
  * `{ leaves, close }` object. Everything else matches the sketch; `await` the call.
  *
- * @param {object} api - The local slothlet instance (the object `slothlet()` returned).
+ * @param {import("./index.mjs").SlothletApi} api - The local slothlet instance (the object `slothlet()` returned).
  * @param {import("./index.mjs").Channel} channel - The transport seam.
  * @param {object} [options]
  * @param {string[]} [options.paths] - Dotted prefixes to serve. A leaf is served when it equals a
@@ -166,7 +166,7 @@ export async function serve(api, channel, options = {}) {
 
 	/**
 	 * Invoke one call frame and send back exactly one terminal frame.
-	 * @param {import("./lib/frame.mjs").Frame} frame - The parsed call (`callId`, `path`, `args`, optional `context`).
+	 * @param {import("./lib/frame.mjs").CallFrame} frame - The parsed call.
 	 * @returns {Promise<void>} Resolves once a terminal frame has been attempted.
 	 */
 	async function answer(frame) {
@@ -383,7 +383,8 @@ export async function serve(api, channel, options = {}) {
 		if (contextCheck === null) throw refused;
 		let answer;
 		try {
-			answer = await contextCheck(structuredClone(requested), { principal: who, path, args: [...args] });
+			// findContextFault above guarantees `requested` is a plain data object.
+			answer = await contextCheck(/** @type {object} */ (structuredClone(requested)), { principal: who, path, args: [...args] });
 		} catch {
 			throw refused;
 		}
@@ -410,7 +411,7 @@ export async function serve(api, channel, options = {}) {
 	 * Hand a frame to the transport, degrading a send failure (an un-cloneable return value, a socket
 	 * that just died) into an error frame rather than an unhandled rejection. If the substitute also
 	 * fails the far side's budget timer settles the call — which is exactly why a budget is mandatory.
-	 * @param {object} frame - The frame to send.
+	 * @param {import("./lib/frame.mjs").Frame} frame - The frame to send.
 	 * @returns {void}
 	 */
 	function send(frame) {
@@ -419,7 +420,7 @@ export async function serve(api, channel, options = {}) {
 		} catch (err) {
 			// A surface frame that cannot be sent has no callId to answer on, and an error frame that
 			// cannot be sent cannot be replaced by another error frame.
-			if (frame.type === "error" || typeof frame.callId !== "string") return;
+			if (frame.type === "error" || !("callId" in frame)) return;
 			try {
 				channel.send(
 					errorFrame(
@@ -456,7 +457,7 @@ export async function serve(api, channel, options = {}) {
 		 * subscribe to the FAR instance's events (the far side resolves the level and sends only what it
 		 * permits). Async because the granted level is resolved across the boundary. `on(event, listener,
 		 * { once })` / `once(event, listener)` return `Promise<{ level, off }>`.
-		 * @type {{ on: Function, once: Function }}
+		 * @type {import("./index.mjs").EventSurface}
 		 */
 		event: {
 			on: (eventName, listener, options = {}) => events.subscribe(eventName, listener, options?.once === true),
@@ -495,7 +496,7 @@ export async function serve(api, channel, options = {}) {
  * to debug from the far side of a boundary — "the leaf is right there and the vine says it isn't" —
  * so every callable record this function declines to publish is reported on `excluded`, whichever
  * filter declined it.
- * @param {object} api - The slothlet instance.
+ * @param {import("./index.mjs").SlothletApi} api - The slothlet instance.
  * @param {{ paths?: string[], modules?: string[] }} options - Serve options.
  * @returns {Promise<{ leaves: string[], excluded: string[] }>} Sorted, de-duplicated dotted leaf
  *   paths: the published surface, and the callable leaves dropped by a filter or the safety guard.
@@ -574,7 +575,7 @@ function copyArgs(path, args) {
  * Reported as CLDMV/slothlet#304 and fixed by CLDMV/slothlet#307; `Reflect.apply` is kept regardless,
  * because it is the idiomatic this-arg + args-array dispatch AND shadow-proof — strictly better than
  * `leaf.apply` on a fixed slothlet too.
- * @param {object} api - The slothlet instance.
+ * @param {import("./index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} path - Validated dotted path.
  * @param {unknown[]} args - Call arguments.
  * @returns {Promise<unknown>} The leaf's resolved value.
@@ -583,14 +584,15 @@ function copyArgs(path, args) {
 async function invoke(api, path, args) {
 	const segments = path.split(".");
 	const last = /** @type {string} */ (segments.pop());
+	/** @type {unknown} */
 	let parent = api;
 	for (const segment of segments) {
-		parent = parent?.[segment];
+		parent = /** @type {Record<string, unknown>|null|undefined} */ (parent)?.[segment];
 		if (parent === null || (typeof parent !== "object" && typeof parent !== "function")) {
 			throw new VineError(CODES.NO_LEAF, `slothlet-vine: '${path}' no longer resolves on the served instance`, { path });
 		}
 	}
-	const leaf = parent?.[last];
+	const leaf = /** @type {Record<string, unknown>|null|undefined} */ (parent)?.[last];
 	if (typeof leaf !== "function") {
 		throw new VineError(CODES.NO_LEAF, `slothlet-vine: '${path}' is not a callable leaf on the served instance`, { path });
 	}

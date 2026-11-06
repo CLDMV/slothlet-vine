@@ -6,7 +6,7 @@
  * `api.slothlet.api.leaves()` is async — so `serve` returns a Promise for the documented
  * `{ leaves, close }` object. Everything else matches the sketch; `await` the call.
  *
- * @param {object} api - The local slothlet instance (the object `slothlet()` returned).
+ * @param {import("./index.mjs").SlothletApi} api - The local slothlet instance (the object `slothlet()` returned).
  * @param {import("./index.mjs").Channel} channel - The transport seam.
  * @param {object} [options]
  * @param {string[]} [options.paths] - Dotted prefixes to serve. A leaf is served when it equals a
@@ -88,7 +88,7 @@
  *   principal: { path: "remote.renderer", context: { actor: { id: user.id, roles: user.roles } } }
  * });
  */
-export function serve(api: object, channel: import("./index.mjs").Channel, options?: {
+export function serve(api: import("./index.mjs").SlothletApi, channel: import("./index.mjs").Channel, options?: {
     paths?: string[] | undefined;
     modules?: string[] | undefined;
     budgetMs?: number | undefined;

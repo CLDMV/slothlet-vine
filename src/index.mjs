@@ -31,6 +31,53 @@
  *   registered are buffered (true) or may be dropped (absent/false).
  */
 
+/**
+ * The control plane a slothlet instance exposes at `api.slothlet`. Every surface is probed for the
+ * function it needs before use (older slothlet releases lack some), so the members are typed as the
+ * plain function maps vine calls through.
+ *
+ * @typedef {object} SlothletControl
+ * @property {Record<string, Function>} api - Runtime api mutation (`add`, `remove`, `leaves`).
+ * @property {Record<string, Function>} context - Context propagation (`run`, `scope`).
+ * @property {Record<string, Function>} event - Event surface (`on`, `once`, `resolveLevel`).
+ * @property {{ control: { enabled?: unknown }, global: Record<string, Function> }} permissions - The permission system.
+ * @property {Function} caller - The identity of the calling module, when slothlet provides one.
+ */
+
+/**
+ * A slothlet instance: the `slothlet` control plane plus the module api tree, whose shape is whatever
+ * the host composed (hence `unknown` members).
+ *
+ * @typedef {{ slothlet: SlothletControl, [key: string]: unknown }} SlothletApi
+ */
+
+/**
+ * The trigger envelope delivered with every forwarded event.
+ *
+ * @typedef {{ event: string, at: number, instanceID: string }} EventMeta
+ */
+
+/**
+ * A forwarded-event listener: `payload` is `undefined` at the `notify` level.
+ *
+ * @typedef {(payload: unknown, meta: EventMeta) => void} EventListener
+ */
+
+/**
+ * The granted level of a forwarded subscription plus its unsubscribe.
+ *
+ * @typedef {{ level: "deny"|"notify"|"allow", off: () => void }} Subscription
+ */
+
+/**
+ * The event-forwarding surface on a link or serving: slothlet's own `event.on` / `event.once` shape,
+ * async because the granted level is resolved across the boundary.
+ *
+ * @typedef {object} EventSurface
+ * @property {(eventName: string, listener: EventListener, options?: { once?: boolean }) => Promise<Subscription>} on - Subscribe.
+ * @property {(eventName: string, listener: EventListener) => Promise<Subscription>} once - Subscribe for one delivery.
+ */
+
 export { grow, DEFAULT_BUDGET_MS } from "./grow.mjs";
 export { serve } from "./serve.mjs";
 export { CODES, VineError, VineRemoteError, fromWire, toWire } from "./lib/errors.mjs";

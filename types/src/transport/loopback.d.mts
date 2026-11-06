@@ -15,26 +15,26 @@
 /**
  * Create a connected pair of loopback Channels. This is the primary surface: a loopback endpoint is
  * meaningless without its peer, so the pair — not a single channel — is the unit.
- * @returns {[object, object]} Two Channels; anything `a.send()`s arrives at `b`'s handler and vice versa.
+ * @returns {[Endpoint, Endpoint]} Two Channels; anything `a.send()`s arrives at `b`'s handler and vice versa.
  *
  * @example
  * const [a, b] = createPair();
  * b.onMessage((m) => console.log("b got", m));
  * a.send({ type: "ping" });
  */
-export function createPair(): [object, object];
+export function createPair(): [Endpoint, Endpoint];
 /**
  * Create ONE loopback channel, with its peer reachable as `.peer`. Provided so every built-in
  * transport module exports `createChannel(...)` as the design requires; {@link createPair} is the
  * natural surface for loopback and the one to prefer.
- * @returns {object} A Channel whose `.peer` is the other end.
+ * @returns {Endpoint} A Channel whose `.peer` is the other end.
  *
  * @example
  * const channel = createChannel();
  * const serving = await serve(api, channel.peer);
  * const link = await grow(otherApi, channel);
  */
-export function createChannel(): object;
+export function createChannel(): Endpoint;
 /**
  * One end of a loopback pair: the Channel surface plus the private state and hooks the pair needs.
  */
@@ -74,11 +74,11 @@ export type Endpoint = {
     /**
      * - Register the receive handler.
      */
-    onMessage: (handler: (message: any) => void) => void;
+    onMessage: (handler: (message: object) => void) => void;
     /**
      * - Register the far-side-closure handler.
      */
-    onClose: (handler: (info?: any) => void) => void;
+    onClose: (handler: (info?: object) => void) => void;
     /**
      * - Tear this end down.
      */

@@ -19,8 +19,17 @@ import { toWire } from "./errors.mjs";
 export const FRAME_VERSION = 1;
 
 /**
- * A frame on the wire: a `type` discriminator plus the type's own fields (see the builders below).
- * @typedef {{ type: string, [key: string]: any }} Frame
+ * A frame on the wire: one of the shapes below, discriminated on `type`.
+ *
+ * @typedef {{ type: "surface", v: number, leaves: string[], unsafe?: string[], context?: true }} SurfaceFrame
+ * @typedef {{ type: "call", callId: string, path: string, args: unknown[], context?: unknown }} CallFrame
+ * @typedef {{ type: "result", callId: string, value: unknown }} ResultFrame
+ * @typedef {{ type: "error", callId: string, error: object }} ErrorFrame
+ * @typedef {{ type: "sub", subId: string, event: string, subscriberPath: string|null }} SubFrame
+ * @typedef {{ type: "sub-ack", subId: string, level: "deny"|"notify"|"allow" }} SubAckFrame
+ * @typedef {{ type: "event", subId: string, event: string, at: number, instanceID: string, hasPayload?: boolean, payload?: unknown }} EventFrame
+ * @typedef {{ type: "unsub", subId: string }} UnsubFrame
+ * @typedef {SurfaceFrame|CallFrame|ResultFrame|ErrorFrame|SubFrame|SubAckFrame|EventFrame|UnsubFrame} Frame
  */
 
 /**
@@ -193,7 +202,7 @@ export function callFrame(callId, path, args, context = null) {
  * Is `value` a plain data object — `{}` / `Object.create(null)` — as opposed to an array, a class
  * instance, or a primitive?
  * @param {unknown} value - Candidate.
- * @returns {boolean} True for a plain object.
+ * @returns {value is Record<string, unknown>} True for a plain object.
  */
 export function isPlainObject(value) {
 	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
@@ -267,7 +276,7 @@ export function subFrame(subId, event, subscriberPath) {
  * of payloads.
  * @param {string} subId - Correlation id being answered.
  * @param {"deny"|"notify"|"allow"} level - The level the trusted side resolved for the subscriber.
- * @returns {{ type: "sub-ack", subId: string, level: string }} The frame.
+ * @returns {SubAckFrame} The frame.
  */
 export function subAckFrame(subId, level) {
 	return { type: "sub-ack", subId, level };
@@ -318,7 +327,7 @@ export function parseFrame(message) {
 	try {
 		if (message === null || typeof message !== "object" || Array.isArray(message)) return null;
 		// Untrusted wire data: each field is type-checked below before it is used.
-		const msg = /** @type {Record<string, any>} */ (message);
+		const msg = /** @type {Record<string, unknown>} */ (message);
 		const type = msg.type;
 		if (typeof type !== "string") return null;
 
@@ -352,8 +361,9 @@ export function parseFrame(message) {
 		}
 		if (type === "sub-ack") {
 			if (typeof msg.subId !== "string" || msg.subId.length === 0) return null;
-			if (!SUB_LEVELS.has(msg.level)) return null;
-			return { type: "sub-ack", subId: msg.subId, level: msg.level };
+			const level = /** @type {string} */ (msg.level);
+			if (!SUB_LEVELS.has(level)) return null;
+			return { type: "sub-ack", subId: msg.subId, level: /** @type {"deny"|"notify"|"allow"} */ (level) };
 		}
 		if (type === "event") {
 			if (typeof msg.subId !== "string" || msg.subId.length === 0) return null;
@@ -362,13 +372,14 @@ export function parseFrame(message) {
 			// value: an `allow` delivery of an explicit `undefined` still arrives as a delivered payload,
 			// while a `notify` delivery has no key at all. `hasPayload` preserves that distinction.
 			const hasPayload = Object.prototype.hasOwnProperty.call(msg, "payload");
-			/** @type {Frame} */
+			/** @type {EventFrame} */
 			const frame = {
 				type: "event",
 				subId: msg.subId,
 				event: msg.event,
-				at: msg.at,
-				instanceID: msg.instanceID,
+				// The trigger envelope is passed through as sent; the receiver reads it as metadata only.
+				at: /** @type {number} */ (msg.at),
+				instanceID: /** @type {string} */ (msg.instanceID),
 				hasPayload
 			};
 			if (hasPayload) frame.payload = msg.payload;

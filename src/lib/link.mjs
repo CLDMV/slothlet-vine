@@ -43,7 +43,7 @@ export class PendingTable {
 		this.nonce = nonce;
 		/** @type {number} Monotonic counter — never `Math.random` per call. */
 		this._seq = 0;
-		/** @type {Map<string, { resolve: Function, reject: Function, timer: any, path: string }>} */
+		/** @type {Map<string, { resolve: Function, reject: Function, timer: ReturnType<typeof setTimeout>|null, path: string }>} */
 		this._pending = new Map();
 	}
 
@@ -139,7 +139,7 @@ export class PendingTable {
 	 * Remove and return a pending entry, clearing its timer — the single choke point that makes
 	 * settling once-only.
 	 * @param {string} callId - Correlation id.
-	 * @returns {{ resolve: Function, reject: Function, timer: any, path: string }|null} The entry, or null when already settled.
+	 * @returns {{ resolve: Function, reject: Function, timer: ReturnType<typeof setTimeout>|null, path: string }|null} The entry, or null when already settled.
 	 */
 	_take(callId) {
 		const entry = this._pending.get(callId);
@@ -180,7 +180,10 @@ export function assertChannel(channel, who) {
  * @throws {TypeError} When the object is not a usable slothlet instance.
  */
 export function assertApi(api, who, needs) {
-	const surface = api && typeof api === "object" ? /** @type {Record<string, any>} */ (api).slothlet?.api : undefined;
+	const surface =
+		api && typeof api === "object"
+			? /** @type {{ slothlet?: Partial<import("../index.mjs").SlothletControl> }} */ (api).slothlet?.api
+			: undefined;
 	const missing = surface ? needs.filter((name) => typeof surface[name] !== "function") : needs;
 	if (missing.length > 0) {
 		throw new TypeError(
@@ -194,7 +197,7 @@ export function assertApi(api, who, needs) {
  * Register a handler on `channel.onClose` if the transport offers one, wrapping it so a throwing
  * handler can never propagate into transport code (Channel contract: "Handlers must never throw
  * into the transport; the core wraps its handlers").
- * @param {object} channel - The channel.
+ * @param {import("../index.mjs").Channel} channel - The channel.
  * @param {(info?: object) => void} handler - The close handler.
  * @returns {boolean} True when the transport supports close notification.
  */

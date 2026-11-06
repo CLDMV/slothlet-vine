@@ -2,7 +2,7 @@
  * Grow a vine from this instance to the far tree on `channel`: await the far side's `surface` frame,
  * mount a forwarding stub per leaf, and return the live link.
  *
- * @param {object} api - The local slothlet instance (the object `slothlet()` returned).
+ * @param {import("./index.mjs").SlothletApi} api - The local slothlet instance (the object `slothlet()` returned).
  * @param {import("./index.mjs").Channel} channel - The transport seam.
  * @param {object} [options]
  * @param {number} [options.budgetMs=30000] - Per-call settle budget; expiry settles that call with
@@ -41,7 +41,7 @@
  *   carrying one is refused locally (`VINE_CONTEXT`, nothing sent) when the far side did not advertise
  *   that it accepts requested contexts; a resolver that throws rejects that call with its error, and
  *   an answer that is not data rejects it `VINE_DATA_ONLY`.
- * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}>, event: { on: Function, once: Function } }>}
+ * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}>, event: import("./index.mjs").EventSurface }>}
  *   The live link. The three path lists are DISJOINT and together account for every leaf the far
  *   side published: `leaves` are the paths actually mounted and forwarding; `skipped` are far leaves
  *   refused locally (unsafe path, outside `paths`, rejected by `add()`, or published after the link
@@ -61,7 +61,7 @@
  * await api.exts.pdfViewer.open("a.pdf"); // runs on the far side
  * await link.close();                      // stubs unmounted, pending calls settle VINE_CLOSED
  */
-export function grow(api: object, channel: import("./index.mjs").Channel, options?: {
+export function grow(api: import("./index.mjs").SlothletApi, channel: import("./index.mjs").Channel, options?: {
     budgetMs?: number | undefined;
     handshakeMs?: number | undefined;
     paths?: string[] | undefined;
@@ -72,7 +72,7 @@ export function grow(api: object, channel: import("./index.mjs").Channel, option
         path: string;
         context?: object;
     }) | undefined;
-    context?: object | (() => object | null | undefined);
+    context?: object | (() => object | null | undefined) | undefined;
 }): Promise<{
     id: string;
     leaves: string[];
@@ -85,10 +85,7 @@ export function grow(api: object, channel: import("./index.mjs").Channel, option
         reason: string;
         info?: object;
     }>;
-    event: {
-        on: Function;
-        once: Function;
-    };
+    event: import("./index.mjs").EventSurface;
 }>;
 /** Default per-call settle budget, in ms. @type {number} */
 export const DEFAULT_BUDGET_MS: number;

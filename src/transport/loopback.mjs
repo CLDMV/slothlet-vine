@@ -16,7 +16,7 @@
 /**
  * Create a connected pair of loopback Channels. This is the primary surface: a loopback endpoint is
  * meaningless without its peer, so the pair — not a single channel — is the unit.
- * @returns {[object, object]} Two Channels; anything `a.send()`s arrives at `b`'s handler and vice versa.
+ * @returns {[Endpoint, Endpoint]} Two Channels; anything `a.send()`s arrives at `b`'s handler and vice versa.
  *
  * @example
  * const [a, b] = createPair();
@@ -35,7 +35,7 @@ export function createPair() {
  * Create ONE loopback channel, with its peer reachable as `.peer`. Provided so every built-in
  * transport module exports `createChannel(...)` as the design requires; {@link createPair} is the
  * natural surface for loopback and the one to prefer.
- * @returns {object} A Channel whose `.peer` is the other end.
+ * @returns {Endpoint} A Channel whose `.peer` is the other end.
  *
  * @example
  * const channel = createChannel();
@@ -60,8 +60,8 @@ export function createChannel() {
  * @property {unknown[]} buffer - Frames that arrived before a handler existed.
  * @property {object} capabilities - The Channel capability declaration.
  * @property {(message: object) => void} send - Deliver one frame to the peer.
- * @property {(handler: (message: any) => void) => void} onMessage - Register the receive handler.
- * @property {(handler: (info?: any) => void) => void} onClose - Register the far-side-closure handler.
+ * @property {(handler: (message: object) => void) => void} onMessage - Register the receive handler.
+ * @property {(handler: (info?: object) => void) => void} onClose - Register the far-side-closure handler.
  * @property {() => void} close - Tear this end down.
  * @property {(message: unknown) => void} _deliver - Accept an inbound frame.
  * @property {(message: unknown) => void} _invoke - Run the handler insulated from throws.

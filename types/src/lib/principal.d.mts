@@ -61,13 +61,13 @@ export function bindPrincipal(option: unknown, who: string): BoundPrincipal | nu
  *   establish one cannot run anything "under" the principal.
  * - `run` only (grow, and only when the static principal carries a `context`): `api.slothlet.context.run`
  *   must work, probed the same way — the event half re-resolves inside `run(principal.context)`.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {{ calls?: boolean, scope?: boolean, run?: boolean }} needs - Which preconditions apply to this end.
  * @param {string} who - `serve` / `grow`, for error messages.
  * @returns {Promise<void>} Resolves when every applicable precondition holds.
  * @throws {TypeError} Naming the first precondition that fails.
  */
-export function assertPrincipalSupport(api: object, needs: {
+export function assertPrincipalSupport(api: import("../index.mjs").SlothletApi, needs: {
     calls?: boolean;
     scope?: boolean;
     run?: boolean;
@@ -77,25 +77,25 @@ export function assertPrincipalSupport(api: object, needs: {
  * `scope: false` instance still exposes `scope` as a function that rejects `SCOPE_DISABLED`. Used for
  * a principal (every call runs inside its scope) and for a `context` check on `serve()` (#79: every
  * call carrying an accepted requested context runs inside a scope holding it).
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} who - `serve` / `grow`, for the error message.
  * @param {string} feature - What needs the scope (`a principal`, `a context check`), for the message.
  * @returns {Promise<void>} Resolves when the probe answered `true`.
  * @throws {TypeError} When the probe failed.
  */
-export function assertScopeSupport(api: object, who: string, feature: string): Promise<void>;
+export function assertScopeSupport(api: import("../index.mjs").SlothletApi, who: string, feature: string): Promise<void>;
 /**
  * Ask slothlet whether `principal` may call `path` with `args`, through the ONE seam the vine uses
  * for its call gate. Fail-closed on every path: a missing API, a throw, a rejection, or a verdict that
  * is not literally `true` all answer `false`. Called INSIDE the principal's context scope so
  * conditional rules and `requires`-principals see the bound context.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {Readonly<Principal>} principal - The resolved principal for this frame.
  * @param {string} path - The served leaf path (already validated against the surface).
  * @param {unknown[]} args - The call's arguments, forwarded as `callMeta.args` for rule conditions.
  * @returns {Promise<boolean>} `true` ONLY when slothlet answered `true`.
  */
-export function gate(api: object, principal: Readonly<Principal>, path: string, args: unknown[]): Promise<boolean>;
+export function gate(api: import("../index.mjs").SlothletApi, principal: Readonly<Principal>, path: string, args: unknown[]): Promise<boolean>;
 /**
  * The narrower of two delivery levels (`deny` < `notify` < `allow`). Anything that is not a known
  * level ranks as `deny`, so a resolver that answers junk can only ever narrow.
@@ -122,7 +122,7 @@ export type Principal = {
     /**
      * - Plain data merged into the per-call context scope (write-protected there).
      */
-    context?: object;
+    context?: object | undefined;
 };
 export type BoundPrincipal = {
     /**

@@ -180,6 +180,7 @@
 		"@eslint/json": "^2.1.1",
 		"@eslint/markdown": "^8.0.3",
 		"@types/node": "^26.6.6",
+		"@types/ws": "^8.18.2",
 		"@vitest/coverage-v8": "^5.0.5",
 		"eslint": "^10.14.0",
 		"globals": "^17.14.0",

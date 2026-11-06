@@ -113,7 +113,7 @@ export function bindPrincipal(option, who) {
  *   establish one cannot run anything "under" the principal.
  * - `run` only (grow, and only when the static principal carries a `context`): `api.slothlet.context.run`
  *   must work, probed the same way — the event half re-resolves inside `run(principal.context)`.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {{ calls?: boolean, scope?: boolean, run?: boolean }} needs - Which preconditions apply to this end.
  * @param {string} who - `serve` / `grow`, for error messages.
  * @returns {Promise<void>} Resolves when every applicable precondition holds.
@@ -147,7 +147,7 @@ export async function assertPrincipalSupport(api, needs, who) {
  * `scope: false` instance still exposes `scope` as a function that rejects `SCOPE_DISABLED`. Used for
  * a principal (every call runs inside its scope) and for a `context` check on `serve()` (#79: every
  * call carrying an accepted requested context runs inside a scope holding it).
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} who - `serve` / `grow`, for the error message.
  * @param {string} feature - What needs the scope (`a principal`, `a context check`), for the message.
  * @returns {Promise<void>} Resolves when the probe answered `true`.
@@ -160,7 +160,7 @@ export async function assertScopeSupport(api, who, feature) {
 /**
  * Run one context probe and turn any failure — a missing function, a `SCOPE_DISABLED` rejection, a
  * wrong answer — into the setup `TypeError`.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} who - `serve` / `grow`.
  * @param {"scope"|"run"} name - Which `api.slothlet.context.*` function is being probed.
  * @param {string} feature - What needs it, for the message.
@@ -186,7 +186,7 @@ async function probe(api, who, name, feature, attempt) {
  * for its call gate. Fail-closed on every path: a missing API, a throw, a rejection, or a verdict that
  * is not literally `true` all answer `false`. Called INSIDE the principal's context scope so
  * conditional rules and `requires`-principals see the bound context.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {Readonly<Principal>} principal - The resolved principal for this frame.
  * @param {string} path - The served leaf path (already validated against the surface).
  * @param {unknown[]} args - The call's arguments, forwarded as `callMeta.args` for rule conditions.

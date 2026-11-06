@@ -28,11 +28,11 @@ export function assertApi(api: unknown, who: string, needs: string[]): void;
  * Register a handler on `channel.onClose` if the transport offers one, wrapping it so a throwing
  * handler can never propagate into transport code (Channel contract: "Handlers must never throw
  * into the transport; the core wraps its handlers").
- * @param {object} channel - The channel.
+ * @param {import("../index.mjs").Channel} channel - The channel.
  * @param {(info?: object) => void} handler - The close handler.
  * @returns {boolean} True when the transport supports close notification.
  */
-export function onCloseSafe(channel: object, handler: (info?: object) => void): boolean;
+export function onCloseSafe(channel: import("../index.mjs").Channel, handler: (info?: object) => void): boolean;
 /**
  * The settle-once correlation table for one link.
  */
@@ -46,11 +46,11 @@ export class PendingTable {
     nonce: string;
     /** @type {number} Monotonic counter — never `Math.random` per call. */
     _seq: number;
-    /** @type {Map<string, { resolve: Function, reject: Function, timer: any, path: string }>} */
+    /** @type {Map<string, { resolve: Function, reject: Function, timer: ReturnType<typeof setTimeout>|null, path: string }>} */
     _pending: Map<string, {
         resolve: Function;
         reject: Function;
-        timer: any;
+        timer: ReturnType<typeof setTimeout> | null;
         path: string;
     }>;
     /** @returns {number} Currently-unsettled call count (tests + telemetry). */
@@ -101,12 +101,12 @@ export class PendingTable {
      * Remove and return a pending entry, clearing its timer — the single choke point that makes
      * settling once-only.
      * @param {string} callId - Correlation id.
-     * @returns {{ resolve: Function, reject: Function, timer: any, path: string }|null} The entry, or null when already settled.
+     * @returns {{ resolve: Function, reject: Function, timer: ReturnType<typeof setTimeout>|null, path: string }|null} The entry, or null when already settled.
      */
     _take(callId: string): {
         resolve: Function;
         reject: Function;
-        timer: any;
+        timer: ReturnType<typeof setTimeout> | null;
         path: string;
     } | null;
 }

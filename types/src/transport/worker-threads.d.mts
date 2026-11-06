@@ -8,7 +8,7 @@
  * worker dying is the point, so `onClose` stays live until you close the channel.
  *
  * @param {import("node:worker_threads").Worker} worker - A live Worker instance.
- * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
+ * @returns {import("../index.mjs").Channel} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  * @throws {TypeError} When `worker` is not an object exposing `postMessage` and `on`.
  *
  * @example
@@ -23,7 +23,7 @@
  * const hostApi = await slothlet({ base: API_DIR }); // safe: the surface frame is queued meanwhile
  * const link = await grow(hostApi, channel, { budgetMs: 5000 });
  */
-export function createChannel(worker: import("node:worker_threads").Worker): object;
+export function createChannel(worker: import("node:worker_threads").Worker): import("../index.mjs").Channel;
 /**
  * CHILD side. Wrap `worker_threads.parentPort` (or any `MessagePort`) as a Channel whose far side is
  * the parent that spawned this worker (which wraps the `Worker` with {@link createChannel}).
@@ -37,7 +37,7 @@ export function createChannel(worker: import("node:worker_threads").Worker): obj
  * one process for the Channel conformance suite.
  *
  * @param {import("node:worker_threads").MessagePort|null} [port=parentPort] - The port to wrap.
- * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
+ * @returns {import("../index.mjs").Channel} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  * @throws {TypeError} When no usable port is available (called outside a worker with no `port`).
  *
  * @example
@@ -49,4 +49,13 @@ export function createChannel(worker: import("node:worker_threads").Worker): obj
  * const api = await slothlet({ base: SERVE_DIR });
  * await serve(api, createParentChannel());
  */
-export function createParentChannel(port?: import("node:worker_threads").MessagePort | null): object;
+export function createParentChannel(port?: import("node:worker_threads").MessagePort | null): import("../index.mjs").Channel;
+/**
+ * The surface of a `Worker` or `MessagePort` that this transport drives.
+ */
+export type ThreadTarget = {
+    on(event: string, listener: Function): unknown;
+    removeListener(event: string, listener: Function): unknown;
+    postMessage(message: object): void;
+    close?(): unknown;
+};
