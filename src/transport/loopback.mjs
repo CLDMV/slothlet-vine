@@ -16,7 +16,7 @@
 /**
  * Create a connected pair of loopback Channels. This is the primary surface: a loopback endpoint is
  * meaningless without its peer, so the pair — not a single channel — is the unit.
- * @returns {[object, object]} Two Channels; anything `a.send()`s arrives at `b`'s handler and vice versa.
+ * @returns {[Endpoint, Endpoint]} Two Channels; anything `a.send()`s arrives at `b`'s handler and vice versa.
  *
  * @example
  * const [a, b] = createPair();
@@ -35,7 +35,7 @@ export function createPair() {
  * Create ONE loopback channel, with its peer reachable as `.peer`. Provided so every built-in
  * transport module exports `createChannel(...)` as the design requires; {@link createPair} is the
  * natural surface for loopback and the one to prefer.
- * @returns {object} A Channel whose `.peer` is the other end.
+ * @returns {Endpoint} A Channel whose `.peer` is the other end.
  *
  * @example
  * const channel = createChannel();
@@ -50,11 +50,29 @@ export function createChannel() {
 }
 
 /**
+ * One end of a loopback pair: the Channel surface plus the private state and hooks the pair needs.
+ * @typedef {object} Endpoint
+ * @property {Endpoint|null} _peer - The other end, filled in by {@link createPair}.
+ * @property {Endpoint|null} [peer] - The other end, as exposed by {@link createChannel}.
+ * @property {boolean} closed - Whether this end was closed locally.
+ * @property {Function|null} handler - The single receive handler.
+ * @property {Function|null} onCloseHandler - The single far-side-closure handler.
+ * @property {unknown[]} buffer - Frames that arrived before a handler existed.
+ * @property {object} capabilities - The Channel capability declaration.
+ * @property {(message: object) => void} send - Deliver one frame to the peer.
+ * @property {(handler: (message: object) => void) => void} onMessage - Register the receive handler.
+ * @property {(handler: (info?: object) => void) => void} onClose - Register the far-side-closure handler.
+ * @property {() => void} close - Tear this end down.
+ * @property {(message: unknown) => void} _deliver - Accept an inbound frame.
+ * @property {(message: unknown) => void} _invoke - Run the handler insulated from throws.
+ */
+
+/**
  * Build one unconnected endpoint. `_peer` is filled in by {@link createPair}.
- * @returns {object} A Channel implementation.
+ * @returns {Endpoint} A Channel implementation.
  */
 function makeEndpoint() {
-	/** @type {{ _peer: object|null, closed: boolean, handler: Function|null, onCloseHandler: Function|null, buffer: unknown[] }} */
+	/** @type {Endpoint} */
 	const endpoint = {
 		_peer: null,
 		closed: false,

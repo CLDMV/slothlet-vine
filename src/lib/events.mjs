@@ -21,7 +21,7 @@ import { isNarrowingHint, narrowest } from "./principal.mjs";
 /**
  * Build the event-forwarding half of one vine end.
  * @param {object} params
- * @param {object} params.api - The local slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} params.api - The local slothlet instance.
  * @param {import("../index.mjs").Channel} params.channel - The transport seam (used for `send`).
  * @param {number} params.budgetMs - Per-subscribe-handshake settle budget (a `sub-ack` that never
  *   arrives settles `VINE_BUDGET`).
@@ -29,7 +29,7 @@ import { isNarrowingHint, narrowest } from "./principal.mjs";
  *   after teardown fails loudly and a forward after teardown is dropped. `serve` has no `gone`.
  * @param {import("./principal.mjs").BoundPrincipal|null} [params.principal] - The channel principal this
  *   end bound (see the file header), or `null` / absent for the v1 trusted-transport behaviour.
- * @returns {{ subscribe: Function, handleFrame: (frame: object) => void, teardown: (opts: {sendUnsubs: boolean}) => void }}
+ * @returns {{ subscribe: (eventName: string, listener: Function, once: boolean) => Promise<import("../index.mjs").Subscription>, handleFrame: (frame: import("./frame.mjs").Frame) => void, teardown: (opts: {sendUnsubs: boolean}) => void }}
  */
 export function createEventForwarder({ api, channel, budgetMs, ended, principal = null }) {
 	const eventApi = api.slothlet?.event;
@@ -64,7 +64,7 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	 * Hand a frame to the transport, swallowing a send failure (a dead socket, a frame crossing a
 	 * close). Event frames carry no `callId`, so there is nothing to settle in reply — teardown settles
 	 * anything still pending.
-	 * @param {object} frame - The frame to send.
+	 * @param {import("./frame.mjs").Frame} frame - The frame to send.
 	 * @returns {void}
 	 */
 	function trySend(frame) {
@@ -82,7 +82,7 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	 * denied — host-subscribe and forward each emit cut to that subscriber's level. The level is
 	 * re-resolved on EVERY emit so a rule change that downgrades it (allow → notify → deny) is honoured
 	 * live, and a `notify` subscriber's payload never leaves this instance.
-	 * @param {{ subId: string, event: string, subscriberPath: string|null }} frame - The parsed sub.
+	 * @param {import("./frame.mjs").SubFrame} frame - The parsed sub.
 	 * @returns {void}
 	 */
 	function accept(frame) {
@@ -116,22 +116,22 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	 * live, and a `notify` subscriber's payload never leaves this instance.
 	 * @param {string} subId - The far side's subscription id.
 	 * @param {string} event - The event name.
-	 * @param {unknown} level - The level resolved at subscribe (anything unknown is `deny`).
+	 * @param {string} level - The level resolved at subscribe (anything unknown is `deny`).
 	 * @param {() => (string|Promise<string>)} current - Re-resolves the level per emit. Never throws or
 	 *   rejects; answers `deny` for any failure.
 	 * @returns {void}
 	 */
 	function admit(subId, event, level, current) {
-		if (!SUB_LEVELS.has(level)) level = "deny";
-		sendAck(subId, level);
-		if (level === "deny") return;
+		const granted = /** @type {"deny"|"notify"|"allow"} */ (SUB_LEVELS.has(level) ? level : "deny");
+		sendAck(subId, granted);
+		if (granted === "deny") return;
 
 		let off;
 		try {
-			({ off } = eventApi.on(event, (payload, meta) => {
+			({ off } = eventApi.on(event, (/** @type {unknown} */ payload, /** @type {import("../index.mjs").EventMeta} */ meta) => {
 				if (ended() || !incoming.has(subId)) return;
 				const resolved = current();
-				if (typeof resolved?.then === "function") void resolved.then((value) => forward(subId, meta, payload, value));
+				if (typeof resolved !== "string") void resolved.then((value) => forward(subId, meta, payload, value));
 				else forward(subId, meta, payload, resolved);
 			}));
 		} catch {
@@ -191,7 +191,8 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	 */
 	async function levelAs(subscriberPath, event) {
 		try {
-			const who = principal.resolve();
+			// `levelAs` is only reached on the principal-bound path, so a principal is always present here.
+			const who = /** @type {import("./principal.mjs").BoundPrincipal} */ (principal).resolve();
 			if (!who) return "deny";
 			const compute = () => {
 				const base = eventApi.resolveLevel(who.path, event);
@@ -278,13 +279,17 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 		} catch (err) {
 			acks.reject(
 				subId,
-				new VineError(CODES.BAD_FRAME, `slothlet-vine: subscribe to '${eventName}' could not be sent: ${err?.message ?? String(err)}`, {
-					event: eventName
-				})
+				new VineError(
+					CODES.BAD_FRAME,
+					`slothlet-vine: subscribe to '${eventName}' could not be sent: ${/** @type {Error|undefined} */ (err)?.message ?? String(err)}`,
+					{
+						event: eventName
+					}
+				)
 			);
 		}
 		// Settles with the granted level, or rejects VINE_GONE / VINE_CLOSED / VINE_BUDGET / VINE_BAD_FRAME.
-		const level = await acked;
+		const level = /** @type {"deny"|"notify"|"allow"} */ (await acked);
 		if (level === "deny") return { level, off: () => {} };
 
 		/**
@@ -305,7 +310,7 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	 * the `payload` key on the wire — distinguishes an `allow` delivery (payload, possibly `undefined`)
 	 * from a `notify` one (no payload); the listener is called `(payload, meta)` exactly as slothlet's
 	 * own listener is. A `once` subscription is torn down before delivery.
-	 * @param {{ subId: string, event: string, at: number, instanceID: string, hasPayload: boolean, payload?: unknown }} frame - The parsed event.
+	 * @param {import("./frame.mjs").EventFrame} frame - The parsed event.
 	 * @returns {void}
 	 */
 	function deliver(frame) {
@@ -328,7 +333,7 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	/**
 	 * Route one parsed frame to the right half. Both ends call this for every event-forwarding frame;
 	 * the TYPE decides the half, so a colliding subId across ends could never cross wires anyway.
-	 * @param {object} frame - A parsed `sub` / `unsub` / `sub-ack` / `event` frame.
+	 * @param {import("./frame.mjs").Frame} frame - A parsed `sub` / `unsub` / `sub-ack` / `event` frame.
 	 * @returns {void}
 	 */
 	function handleFrame(frame) {

@@ -33,6 +33,7 @@ export default defineConfig([
 			".configs/**",
 			".vscode/**",
 			"coverage/**",
+			"types/**",
 			"reference/**",
 			"*.min.*",
 			"**/package-lock.json",

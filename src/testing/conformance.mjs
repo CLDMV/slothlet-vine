@@ -17,6 +17,13 @@
 const WAIT_MS = 2000;
 
 /**
+ * A frame as received over the channel under test: whichever shape the sender used, so the fields the
+ * cases assert on are all optional.
+ *
+ * @typedef {import("../lib/frame.mjs").Frame & { callId?: string, path?: string, args?: unknown[], value?: unknown }} Received
+ */
+
+/**
  * Run the Channel conformance suite against a transport.
  *
  * The pair factory may be sync or async and may return either `[a, b]` or
@@ -24,7 +31,7 @@ const WAIT_MS = 2000;
  * the object form so the suite can tear them down between cases.
  *
  * @param {string} name - Transport name, used in the suite title.
- * @param {() => ([object, object] | {a: object, b: object, cleanup?: () => unknown} | Promise<[object, object] | {a: object, b: object, cleanup?: () => unknown}>)} makePair
+ * @param {() => ([import("../index.mjs").Channel, import("../index.mjs").Channel] | {a: import("../index.mjs").Channel, b: import("../index.mjs").Channel, cleanup?: () => unknown} | Promise<[import("../index.mjs").Channel, import("../index.mjs").Channel] | {a: import("../index.mjs").Channel, b: import("../index.mjs").Channel, cleanup?: () => unknown}>)} makePair
  *   Produces one connected channel pair per test.
  * @param {{ describe: Function, it: Function, expect: Function }} t - The injected test framework.
  * @returns {void}
@@ -34,7 +41,7 @@ export function channelConformance(name, makePair, t) {
 
 	/**
 	 * Normalize whatever the factory returned into `{ a, b, cleanup }`.
-	 * @returns {Promise<{a: object, b: object, cleanup: () => Promise<void>}>} The pair plus teardown.
+	 * @returns {Promise<{a: import("../index.mjs").Channel, b: import("../index.mjs").Channel, cleanup: () => Promise<void>}>} The pair plus teardown.
 	 */
 	async function pair() {
 		const made = await makePair();
@@ -134,9 +141,10 @@ export function channelConformance(name, makePair, t) {
 				const big = { text: "x".repeat(200_000), list: Array.from({ length: 5000 }, (_, i) => i), nested: { deep: { ok: true } } };
 				a.send({ type: "call", callId: "big", path: "p", args: [big] });
 				const [frame] = await received.take(1);
-				expect(frame.args[0].text.length).toBe(200_000);
-				expect(frame.args[0].list.length).toBe(5000);
-				expect(frame.args[0].nested.deep.ok).toBe(true);
+				const [arg] = /** @type {[{ text: string, list: number[], nested: { deep: { ok: boolean } } }]} */ (frame.args);
+				expect(arg.text.length).toBe(200_000);
+				expect(arg.list.length).toBe(5000);
+				expect(arg.nested.deep.ok).toBe(true);
 			} finally {
 				await cleanup();
 			}
@@ -165,6 +173,7 @@ export function channelConformance(name, makePair, t) {
 		it("lets the last onMessage registration win", async () => {
 			const { a, b, cleanup } = await pair();
 			try {
+				/** @type {object[]} */
 				const first = [];
 				/* v8 ignore start -- must never run: collect(b) below replaces this handler before
 				   anything is sent, and this callback only fires if "last write wins" has regressed. */
@@ -239,8 +248,9 @@ export function channelConformance(name, makePair, t) {
 				// close() is optional on the Channel contract; a channel without one has nothing to be
 				// idempotent about, so there is nothing further this case can assert.
 				if (typeof b.close !== "function") return;
-				b.close();
-				expect(() => b.close()).not.toThrow();
+				const closeable = /** @type {Required<Pick<import("../index.mjs").Channel, "close">>} */ (b);
+				closeable.close();
+				expect(() => closeable.close()).not.toThrow();
 				expect(() => b.send({ type: "result", callId: "c1", value: 1 })).not.toThrow();
 				expect(() => a.send({ type: "result", callId: "c2", value: 2 })).not.toThrow();
 				await settle();
@@ -268,17 +278,18 @@ export function channelConformance(name, makePair, t) {
 
 	/**
 	 * Attach a collecting handler to a channel.
-	 * @param {object} channel - The channel to listen on.
-	 * @returns {{ frames: object[], take: (n: number) => Promise<object[]> }} Collector.
+	 * @param {import("../index.mjs").Channel} channel - The channel to listen on.
+	 * @returns {{ frames: Received[], take: (n: number) => Promise<Received[]> }} Collector.
 	 */
 	function collect(channel) {
+		/** @type {Received[]} */
 		const frames = [];
-		channel.onMessage((message) => frames.push(message));
+		channel.onMessage((message) => frames.push(/** @type {Received} */ (message)));
 		return {
 			frames,
 			/**
 			 * @param {number} n - How many frames to wait for.
-			 * @returns {Promise<object[]>} The first `n` frames.
+			 * @returns {Promise<Received[]>} The first `n` frames.
 			 */
 			async take(n) {
 				await waitFor(() => frames.length >= n);
