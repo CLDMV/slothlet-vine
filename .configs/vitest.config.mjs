@@ -45,7 +45,11 @@ export default mergeConfig(
 				provider: "v8",
 				include: ["src/**/*.mjs"],
 				exclude: ["**/*.json", "tests/**"],
-				reporter: ["text", "html", "json-summary", "json"]
+				reporter: ["text", "html", "json-summary", "json"],
+				// Coverage must stay at 100%: a drop makes the coverage run (and so CI) fail. The runner executes every
+				// test file in its own vitest process (--reporter=blob) and merges the blobs afterwards; a single file never
+				// covers all of src/, so the threshold applies to the merged report and to plain `vitest --coverage` runs only.
+				thresholds: process.argv.includes("--reporter=blob") ? undefined : { lines: 100, branches: 100, functions: 100, statements: 100 }
 			}
 		}
 	})
