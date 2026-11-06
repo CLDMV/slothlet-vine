@@ -154,11 +154,13 @@ export function toWire(err) {
 	// Every read is guarded: `err` is whatever the leaf threw, and a throwing accessor here would
 	// replace a reportable failure with an unreportable one on the error path itself.
 	try {
+		// Duck-typed read of an arbitrary thrown value; each field is type-checked before use.
+		const thrown = /** @type {Record<string, any>} */ (err);
 		/** @type {{ name: string, message: string, code?: string, stack?: string }} */
-		const wire = { name: safeString(err.name, "Error"), message: safeString(err.message, "") };
-		if (typeof err.code === "string") wire.code = err.code;
-		else if (typeof err.code === "number") wire.code = String(err.code);
-		if (typeof err.stack === "string") wire.stack = err.stack;
+		const wire = { name: safeString(thrown.name, "Error"), message: safeString(thrown.message, "") };
+		if (typeof thrown.code === "string") wire.code = thrown.code;
+		else if (typeof thrown.code === "number") wire.code = String(thrown.code);
+		if (typeof thrown.stack === "string") wire.stack = thrown.stack;
 		return wire;
 	} catch {
 		return { name: "Error", message: "" };

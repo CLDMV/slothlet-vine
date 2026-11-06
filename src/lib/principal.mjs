@@ -26,7 +26,7 @@ import { isPlainObject, isSafePath } from "./frame.mjs";
  * @property {() => Readonly<Principal>|null} resolve - The principal for THIS frame, or `null` when the
  *   host's resolver threw or answered something that is not a principal (the frame is then denied).
  *   Never throws.
- * @property {Readonly<Principal>|(() => unknown)} declared - What is exposed for diagnostics: the frozen,
+ * @property {Readonly<Principal>|Function} declared - What is exposed for diagnostics: the frozen,
  *   normalized principal for the string / object forms, or the host's own resolver function for the
  *   function form (its answer is per frame, so there is no single normalized value to show).
  */
@@ -44,7 +44,7 @@ export function normalizePrincipal(value, who) {
 	if (!isPlainObject(candidate)) {
 		throw new TypeError(`@cldmv/slothlet-vine: ${who}() principal must be a dotted path string or a { path, context? } object`);
 	}
-	const { path, context } = candidate;
+	const { path, context } = /** @type {{ path?: unknown, context?: object }} */ (candidate);
 	// A principal is never mounted, so this is hygiene rather than prototype defence — but it keeps
 	// `**`, empty segments, and the reserved `slothlet` root out of a caller identity all the same.
 	if (!isSafePath(path)) {
@@ -174,7 +174,7 @@ async function probe(api, who, name, feature, attempt) {
 		if (typeof api.slothlet?.context?.[name] === "function" && (await attempt()) === true) return;
 		reason = "it is unavailable";
 	} catch (err) {
-		reason = err?.message ?? String(err);
+		reason = /** @type {Error|undefined} */ (err)?.message ?? String(err);
 	}
 	throw new TypeError(
 		`@cldmv/slothlet-vine: ${who}() with ${feature} needs a working api.slothlet.context.${name}() to run each call under its context — ${reason}`
@@ -216,8 +216,8 @@ const LEVEL_RANK = { deny: 0, notify: 1, allow: 2 };
  * @returns {"deny"|"notify"|"allow"} The narrower of the two.
  */
 export function narrowest(a, b) {
-	const ra = LEVEL_RANK[a] ?? 0;
-	const rb = LEVEL_RANK[b] ?? 0;
+	const ra = LEVEL_RANK[/** @type {string} */ (a)] ?? 0;
+	const rb = LEVEL_RANK[/** @type {string} */ (b)] ?? 0;
 	const rank = Math.min(ra, rb);
 	return rank === 2 ? "allow" : rank === 1 ? "notify" : "deny";
 }

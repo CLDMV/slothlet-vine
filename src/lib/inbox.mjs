@@ -30,7 +30,7 @@ export function createInbox() {
 	/**
 	 * Call the handler with one frame, insulated: a consumer handler must never throw into the
 	 * transport (the Channel contract).
-	 * @param {(frame: unknown) => void} fn - The handler.
+	 * @param {Function} fn - The handler.
 	 * @param {unknown} frame - The frame.
 	 * @returns {void}
 	 */
@@ -64,7 +64,7 @@ export function createInbox() {
 
 		setHandler(fn) {
 			if (closed) return;
-			handler = typeof fn === "function" ? fn : null;
+			handler = typeof fn === "function" ? /** @type {(frame: unknown) => void} */ (fn) : null;
 			if (handler !== null && queue.length > 0 && !replayScheduled) {
 				replayScheduled = true;
 				queueMicrotask(replay);

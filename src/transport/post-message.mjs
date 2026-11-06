@@ -249,7 +249,7 @@ export function createChannel(port, options = {}) {
  * @returns {boolean} True when the error is a structured-clone refusal.
  */
 function isCloneRefusal(err) {
-	return err !== null && typeof err === "object" && err.name === "DataCloneError";
+	return err !== null && typeof err === "object" && /** @type {{ name?: unknown }} */ (err).name === "DataCloneError";
 }
 
 /**

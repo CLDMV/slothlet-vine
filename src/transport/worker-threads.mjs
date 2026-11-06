@@ -70,7 +70,7 @@ export function createChannel(worker) {
  * the parameter exists so two ends of a `worker_threads.MessageChannel` can be wrapped and paired in
  * one process for the Channel conformance suite.
  *
- * @param {import("node:worker_threads").MessagePort} [port=parentPort] - The port to wrap.
+ * @param {import("node:worker_threads").MessagePort|null} [port=parentPort] - The port to wrap.
  * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  * @throws {TypeError} When no usable port is available (called outside a worker with no `port`).
  *
@@ -242,5 +242,5 @@ function makeChannel(target, { deathEvents, ownsTarget }) {
  * @returns {boolean} True when the error is a structured-clone refusal.
  */
 function isCloneRefusal(err) {
-	return err !== null && typeof err === "object" && err.name === "DataCloneError";
+	return err !== null && typeof err === "object" && /** @type {{ name?: unknown }} */ (err).name === "DataCloneError";
 }

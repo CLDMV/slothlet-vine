@@ -116,22 +116,22 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	 * live, and a `notify` subscriber's payload never leaves this instance.
 	 * @param {string} subId - The far side's subscription id.
 	 * @param {string} event - The event name.
-	 * @param {unknown} level - The level resolved at subscribe (anything unknown is `deny`).
+	 * @param {string} level - The level resolved at subscribe (anything unknown is `deny`).
 	 * @param {() => (string|Promise<string>)} current - Re-resolves the level per emit. Never throws or
 	 *   rejects; answers `deny` for any failure.
 	 * @returns {void}
 	 */
 	function admit(subId, event, level, current) {
-		if (!SUB_LEVELS.has(level)) level = "deny";
-		sendAck(subId, level);
-		if (level === "deny") return;
+		const granted = /** @type {"deny"|"notify"|"allow"} */ (SUB_LEVELS.has(level) ? level : "deny");
+		sendAck(subId, granted);
+		if (granted === "deny") return;
 
 		let off;
 		try {
 			({ off } = eventApi.on(event, (payload, meta) => {
 				if (ended() || !incoming.has(subId)) return;
 				const resolved = current();
-				if (typeof resolved?.then === "function") void resolved.then((value) => forward(subId, meta, payload, value));
+				if (typeof resolved !== "string") void resolved.then((value) => forward(subId, meta, payload, value));
 				else forward(subId, meta, payload, resolved);
 			}));
 		} catch {
@@ -191,7 +191,8 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 	 */
 	async function levelAs(subscriberPath, event) {
 		try {
-			const who = principal.resolve();
+			// `levelAs` is only reached on the principal-bound path, so a principal is always present here.
+			const who = /** @type {import("./principal.mjs").BoundPrincipal} */ (principal).resolve();
 			if (!who) return "deny";
 			const compute = () => {
 				const base = eventApi.resolveLevel(who.path, event);
@@ -278,13 +279,17 @@ export function createEventForwarder({ api, channel, budgetMs, ended, principal 
 		} catch (err) {
 			acks.reject(
 				subId,
-				new VineError(CODES.BAD_FRAME, `slothlet-vine: subscribe to '${eventName}' could not be sent: ${err?.message ?? String(err)}`, {
-					event: eventName
-				})
+				new VineError(
+					CODES.BAD_FRAME,
+					`slothlet-vine: subscribe to '${eventName}' could not be sent: ${/** @type {Error|undefined} */ (err)?.message ?? String(err)}`,
+					{
+						event: eventName
+					}
+				)
 			);
 		}
 		// Settles with the granted level, or rejects VINE_GONE / VINE_CLOSED / VINE_BUDGET / VINE_BAD_FRAME.
-		const level = await acked;
+		const level = /** @type {"deny"|"notify"|"allow"} */ (await acked);
 		if (level === "deny") return { level, off: () => {} };
 
 		/**

@@ -3,6 +3,8 @@ node_modules/
 dist/
 build/
 coverage/
+# Generated declaration output (npm run types:build)
+types/
 tmp/
 trash/
 reference/

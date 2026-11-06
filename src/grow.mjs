@@ -65,7 +65,7 @@ export const DEFAULT_BUDGET_MS = 30_000;
  *   carrying one is refused locally (`VINE_CONTEXT`, nothing sent) when the far side did not advertise
  *   that it accepts requested contexts; a resolver that throws rejects that call with its error, and
  *   an answer that is not data rejects it `VINE_DATA_ONLY`.
- * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}> }>}
+ * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}>, event: { on: Function, once: Function } }>}
  *   The live link. The three path lists are DISJOINT and together account for every leaf the far
  *   side published: `leaves` are the paths actually mounted and forwarding; `skipped` are far leaves
  *   refused locally (unsafe path, outside `paths`, rejected by `add()`, or published after the link
@@ -100,7 +100,8 @@ export async function grow(api, channel, options = {}) {
 			"grow"
 		);
 
-	const budgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0 ? Number(options.budgetMs) : DEFAULT_BUDGET_MS;
+	const budgetMs =
+		Number.isFinite(options.budgetMs) && /** @type {number} */ (options.budgetMs) > 0 ? Number(options.budgetMs) : DEFAULT_BUDGET_MS;
 	const handshakeMs = handshakeBudget(options.handshakeMs, budgetMs);
 	const prefixes = Array.isArray(options.paths) ? options.paths.filter((p) => typeof p === "string" && p.length > 0) : null;
 	const defaultContext = bindDefaultContext(options.context);
@@ -144,9 +145,9 @@ export async function grow(api, channel, options = {}) {
 	// handshake outcomes are CAPTURED first and replayed into the promise when it is created —
 	// without this, an early surface is swallowed by a placeholder and `await grow(...)` never
 	// settles at all (the handshake timer sees the handshake as already settled and stands down).
-	/** @type {{ surface: object|null, error: Error|null }} */
+	/** @type {{ surface: import("./lib/frame.mjs").Frame|null, error: Error|null }} */
 	const captured = { surface: null, error: null };
-	/** @type {(surface: {leaves: string[], unsafe: string[]}) => void} */
+	/** @type {(surface: import("./lib/frame.mjs").Frame) => void} */
 	let onSurface = (frame) => {
 		captured.surface = frame;
 	};
@@ -376,10 +377,14 @@ export async function grow(api, channel, options = {}) {
 				// socket. Settle now rather than leaving the entry to time out on its budget.
 				pending.reject(
 					callId,
-					new VineError(CODES.BAD_FRAME, `slothlet-vine: call to '${path}' could not be sent: ${err?.message ?? String(err)}`, {
-						path,
-						callId
-					})
+					new VineError(
+						CODES.BAD_FRAME,
+						`slothlet-vine: call to '${path}' could not be sent: ${/** @type {Error|undefined} */ (err)?.message ?? String(err)}`,
+						{
+							path,
+							callId
+						}
+					)
 				);
 			}
 			return settled;

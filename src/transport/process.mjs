@@ -293,5 +293,10 @@ const DEAD_CHANNEL_CODES = new Set(["ERR_IPC_CHANNEL_CLOSED", "ERR_IPC_DISCONNEC
  * @returns {boolean} True when the error signals a dead IPC channel.
  */
 function isDeadChannelError(err) {
-	return err !== null && typeof err === "object" && typeof err.code === "string" && DEAD_CHANNEL_CODES.has(err.code);
+	return (
+		err !== null &&
+		typeof err === "object" &&
+		typeof (/** @type {{ code?: unknown }} */ (err).code) === "string" &&
+		DEAD_CHANNEL_CODES.has(/** @type {{ code: string }} */ (err).code)
+	);
 }

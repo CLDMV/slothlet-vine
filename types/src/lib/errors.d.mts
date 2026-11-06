@@ -1,0 +1,94 @@
+/**
+ * Project any thrown value onto the wire error shape (`schemas/frame.schema.json` → error.error).
+ * Total: a thrown string, `null`, or an exotic object all produce a valid shape rather than throwing
+ * inside the error path. The stack crosses on purpose — a forwarded failure is otherwise unreadable
+ * on the growing side, which is where it surfaces.
+ * @param {unknown} err - The thrown value.
+ * @returns {{ name: string, message: string, code?: string, stack?: string }} Wire error.
+ */
+export function toWire(err: unknown): {
+    name: string;
+    message: string;
+    code?: string;
+    stack?: string;
+};
+/**
+ * Rebuild a throwable from the wire error shape — the inverse of {@link toWire}. TOTAL: a hostile
+ * wire value (throwing getters, an unstringifiable primitive) still produces an error, because the
+ * caller this settles must never be left pending on a malformed rejection.
+ * @param {unknown} wire - Wire error (tolerated: anything).
+ * @returns {VineRemoteError} The re-thrown-shaped error.
+ */
+export function fromWire(wire: unknown): VineRemoteError;
+/**
+ *
+ *	@Project: @cldmv/slothlet-vine
+ *	@Filename: /src/lib/errors.mjs
+ *	@Date: 2026-08-27T08:03:34-07:00 (1787843014)
+ *	@Author: Nate Corcoran <CLDMV>
+ *	@Email: <Shinrai@users.noreply.github.com>
+ *	-----
+ *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
+ *	@Last modified time: 2026-10-02T12:20:12-07:00 (1790968812)
+ *	-----
+ *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
+ *
+ */
+/**
+ * Stable machine codes carried on `.code`. `REMOTE` is the fallback for a remote application error
+ * whose own error carried no `code` — every other entry is a vine-produced condition.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const CODES: Readonly<Record<string, string>>;
+/**
+ * A failure the vine itself produced. Always carries a `.code` from {@link CODES}; any extra
+ * `details` (typically `path`, `callId`, `budgetMs`) are copied on as own properties.
+ * @augments Error
+ */
+export class VineError extends Error {
+    /**
+     * @param {string} code - A {@link CODES} value.
+     * @param {string} message - Human-readable description.
+     * @param {Record<string, unknown>} [details] - Extra own properties (reserved keys are ignored).
+     */
+    constructor(code: string, message: string, details?: Record<string, unknown>);
+    /** @type {string} Stable machine code — branch on this, never on `message`. */
+    code: string;
+}
+/**
+ * A far-side application error, re-thrown locally. It deliberately impersonates the original error:
+ * `.name` and `.message` are the remote's own, and so is `.code` — so existing
+ * `err.code === "E_THING"` checks keep working across the boundary. Because `.name` is the REMOTE
+ * name, use `instanceof VineRemoteError` (or `.remoteStack`) — not `.name` — to tell a forwarded
+ * error from a local one.
+ *
+ * ## The one code that is NOT adopted: `VINE_*`
+ *
+ * `.code` is adopted from the wire with a single exception — **any remote code in the reserved
+ * `VINE_*` namespace is remapped to `VINE_REMOTE`**, and the far side's own spelling is kept on
+ * `.remoteCode`. Without that, a far side (hostile, or merely running its own vine and forwarding a
+ * failure verbatim) could send `{ name: "VineError", code: "VINE_CLOSED" }` and the resulting error
+ * would satisfy `err instanceof VineError && err.code === CODES.CLOSED` — the documented way to
+ * branch on link state — and drive a consumer's teardown path from across the boundary. A vine
+ * link-state code means *this* link's state; it can only ever be produced locally.
+ *
+ * The remap is deliberately blind to which `VINE_*` code arrived, including ones the far side's own
+ * serve legitimately produced (`VINE_NO_LEAF`, `VINE_DATA_ONLY`): read `.remoteCode` to see what the
+ * far side said, and `.code` to know it came from over there.
+ * @augments VineError
+ */
+export class VineRemoteError extends VineError {
+    /**
+     * @param {{ name?: string, message?: string, code?: string, stack?: string }} wire - Wire error shape.
+     */
+    constructor(wire: {
+        name?: string;
+        message?: string;
+        code?: string;
+        stack?: string;
+    });
+    /** @type {string|undefined} The far side's own `code`, verbatim — including a reserved `VINE_*` one. */
+    remoteCode: string | undefined;
+    /** @type {string|undefined} The far side's stack, kept off `.stack` so the local trace stays local. */
+    remoteStack: string | undefined;
+}

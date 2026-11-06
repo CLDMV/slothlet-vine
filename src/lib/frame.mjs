@@ -19,6 +19,11 @@ import { toWire } from "./errors.mjs";
 export const FRAME_VERSION = 1;
 
 /**
+ * A frame on the wire: a `type` discriminator plus the type's own fields (see the builders below).
+ * @typedef {{ type: string, [key: string]: any }} Frame
+ */
+
+/**
  * Path segments that are never mountable. `__proto__` / `constructor` / `prototype` walk the
  * prototype chain (see the file header); `slothlet` is the control plane, which is NEVER served or
  * mounted, and `shutdown` / `destroy` are the instance's own teardown handles.
@@ -60,7 +65,7 @@ export function isSafeSegment(segment) {
 /**
  * A dotted leaf path is safe when it is non-empty and every segment is.
  * @param {unknown} path - Candidate dotted path (e.g. `exts.pdfViewer.open`).
- * @returns {boolean} True when the whole path may be mounted / invoked.
+ * @returns {path is string} True when the whole path may be mounted / invoked.
  */
 export function isSafePath(path) {
 	if (typeof path !== "string" || path.length === 0) return false;
@@ -162,6 +167,7 @@ export function findFunctionArg(args) {
  * @returns {{ type: "surface", v: number, leaves: string[], context?: true }} The frame.
  */
 export function surfaceFrame(leaves, features = {}) {
+	/** @type {{ type: "surface", v: number, leaves: string[], context?: true }} */
 	const frame = { type: "surface", v: FRAME_VERSION, leaves: [...leaves] };
 	if (features.context === true) frame.context = true;
 	return frame;
@@ -177,6 +183,7 @@ export function surfaceFrame(leaves, features = {}) {
  * @returns {{ type: "call", callId: string, path: string, args: unknown[], context?: object }} The frame.
  */
 export function callFrame(callId, path, args, context = null) {
+	/** @type {{ type: "call", callId: string, path: string, args: unknown[], context?: object }} */
 	const frame = { type: "call", callId, path, args };
 	if (context !== null && context !== undefined) frame.context = context;
 	return frame;
@@ -274,9 +281,10 @@ export function subAckFrame(subId, level) {
  * @param {{ event: string, at: number, instanceID: string }} meta - The trigger envelope.
  * @param {boolean} withPayload - Whether to carry the domain payload.
  * @param {unknown} payload - The domain payload (included only when `withPayload`).
- * @returns {object} The frame.
+ * @returns {Frame} The frame.
  */
 export function eventFrame(subId, meta, withPayload, payload) {
+	/** @type {Frame} */
 	const frame = { type: "event", subId, event: meta.event, at: meta.at, instanceID: meta.instanceID };
 	if (withPayload) frame.payload = payload;
 	return frame;
@@ -304,28 +312,31 @@ export function unsubFrame(subId) {
  * - `args` is copied into a fresh array, so a later mutation of the received object cannot change
  *   what is about to be invoked.
  * @param {unknown} message - Whatever arrived on the channel.
- * @returns {object|null} A normalized frame, or null when the message is not a frame this version handles.
+ * @returns {Frame|null} A normalized frame, or null when the message is not a frame this version handles.
  */
 export function parseFrame(message) {
 	try {
 		if (message === null || typeof message !== "object" || Array.isArray(message)) return null;
-		const type = message.type;
+		// Untrusted wire data: each field is type-checked below before it is used.
+		const msg = /** @type {Record<string, any>} */ (message);
+		const type = msg.type;
 		if (typeof type !== "string") return null;
 
 		if (type === "surface") {
-			if (message.v !== FRAME_VERSION) return null;
-			if (!Array.isArray(message.leaves)) return null;
+			if (msg.v !== FRAME_VERSION) return null;
+			if (!Array.isArray(msg.leaves)) return null;
 			/** @type {string[]} */
 			const leaves = [];
 			/** @type {string[]} */
 			const unsafe = [];
-			for (const leaf of message.leaves) {
+			for (const leaf of msg.leaves) {
 				if (isSafePath(leaf)) leaves.push(leaf);
 				else unsafe.push(typeof leaf === "string" ? leaf : String(leaf));
 			}
+			/** @type {Frame} */
 			const frame = { type: "surface", v: FRAME_VERSION, leaves, unsafe };
 			// #79: the serve accepts a requested context. Only a literal `true` counts.
-			if (message.context === true) frame.context = true;
+			if (msg.context === true) frame.context = true;
 			return frame;
 		}
 
@@ -333,59 +344,61 @@ export function parseFrame(message) {
 		// it is only ever glob-matched against event rules (never a mount/property key), so an arbitrary
 		// string cannot pollute a prototype the way an unguarded `call` path could — a type check suffices.
 		if (type === "sub") {
-			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
-			if (typeof message.event !== "string" || message.event.length === 0) return null;
-			const subscriberPath = message.subscriberPath;
+			if (typeof msg.subId !== "string" || msg.subId.length === 0) return null;
+			if (typeof msg.event !== "string" || msg.event.length === 0) return null;
+			const subscriberPath = msg.subscriberPath;
 			if (subscriberPath !== null && typeof subscriberPath !== "string") return null;
-			return { type: "sub", subId: message.subId, event: message.event, subscriberPath };
+			return { type: "sub", subId: msg.subId, event: msg.event, subscriberPath };
 		}
 		if (type === "sub-ack") {
-			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
-			if (!SUB_LEVELS.has(message.level)) return null;
-			return { type: "sub-ack", subId: message.subId, level: message.level };
+			if (typeof msg.subId !== "string" || msg.subId.length === 0) return null;
+			if (!SUB_LEVELS.has(msg.level)) return null;
+			return { type: "sub-ack", subId: msg.subId, level: msg.level };
 		}
 		if (type === "event") {
-			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
-			if (typeof message.event !== "string") return null;
+			if (typeof msg.subId !== "string" || msg.subId.length === 0) return null;
+			if (typeof msg.event !== "string") return null;
 			// Whether the domain payload crossed is carried by the PRESENCE of the `payload` key, not its
 			// value: an `allow` delivery of an explicit `undefined` still arrives as a delivered payload,
 			// while a `notify` delivery has no key at all. `hasPayload` preserves that distinction.
-			const hasPayload = Object.prototype.hasOwnProperty.call(message, "payload");
+			const hasPayload = Object.prototype.hasOwnProperty.call(msg, "payload");
+			/** @type {Frame} */
 			const frame = {
 				type: "event",
-				subId: message.subId,
-				event: message.event,
-				at: message.at,
-				instanceID: message.instanceID,
+				subId: msg.subId,
+				event: msg.event,
+				at: msg.at,
+				instanceID: msg.instanceID,
 				hasPayload
 			};
-			if (hasPayload) frame.payload = message.payload;
+			if (hasPayload) frame.payload = msg.payload;
 			return frame;
 		}
 		if (type === "unsub") {
-			if (typeof message.subId !== "string" || message.subId.length === 0) return null;
-			return { type: "unsub", subId: message.subId };
+			if (typeof msg.subId !== "string" || msg.subId.length === 0) return null;
+			return { type: "unsub", subId: msg.subId };
 		}
 
-		const callId = message.callId;
+		const callId = msg.callId;
 		if (typeof callId !== "string" || callId.length === 0) return null;
 
 		if (type === "call") {
-			if (!isSafePath(message.path)) return null;
-			if (!Array.isArray(message.args)) return null;
-			const frame = { type: "call", callId, path: message.path, args: [...message.args] };
+			if (!isSafePath(msg.path)) return null;
+			if (!Array.isArray(msg.args)) return null;
+			/** @type {Frame} */
+			const frame = { type: "call", callId, path: msg.path, args: [...msg.args] };
 			// #79: a requested context is carried through RAW — `null` / `undefined` mean "none", anything
 			// else is validated by the serve, which answers `VINE_DATA_ONLY` for a bad one rather than
 			// dropping the frame (a dropped call would only settle on the caller's budget).
-			const context = message.context;
+			const context = msg.context;
 			if (context !== undefined && context !== null) frame.context = context;
 			return frame;
 		}
 		if (type === "result") {
-			return { type: "result", callId, value: message.value };
+			return { type: "result", callId, value: msg.value };
 		}
 		if (type === "error") {
-			const error = message.error;
+			const error = msg.error;
 			if (error === null || typeof error !== "object") return null;
 			return { type: "error", callId, error };
 		}

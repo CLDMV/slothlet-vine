@@ -50,11 +50,29 @@ export function createChannel() {
 }
 
 /**
+ * One end of a loopback pair: the Channel surface plus the private state and hooks the pair needs.
+ * @typedef {object} Endpoint
+ * @property {Endpoint|null} _peer - The other end, filled in by {@link createPair}.
+ * @property {Endpoint|null} [peer] - The other end, as exposed by {@link createChannel}.
+ * @property {boolean} closed - Whether this end was closed locally.
+ * @property {Function|null} handler - The single receive handler.
+ * @property {Function|null} onCloseHandler - The single far-side-closure handler.
+ * @property {unknown[]} buffer - Frames that arrived before a handler existed.
+ * @property {object} capabilities - The Channel capability declaration.
+ * @property {(message: object) => void} send - Deliver one frame to the peer.
+ * @property {(handler: (message: any) => void) => void} onMessage - Register the receive handler.
+ * @property {(handler: (info?: any) => void) => void} onClose - Register the far-side-closure handler.
+ * @property {() => void} close - Tear this end down.
+ * @property {(message: unknown) => void} _deliver - Accept an inbound frame.
+ * @property {(message: unknown) => void} _invoke - Run the handler insulated from throws.
+ */
+
+/**
  * Build one unconnected endpoint. `_peer` is filled in by {@link createPair}.
- * @returns {object} A Channel implementation.
+ * @returns {Endpoint} A Channel implementation.
  */
 function makeEndpoint() {
-	/** @type {{ _peer: object|null, closed: boolean, handler: Function|null, onCloseHandler: Function|null, buffer: unknown[] }} */
+	/** @type {Endpoint} */
 	const endpoint = {
 		_peer: null,
 		closed: false,

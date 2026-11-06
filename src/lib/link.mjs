@@ -43,7 +43,7 @@ export class PendingTable {
 		this.nonce = nonce;
 		/** @type {number} Monotonic counter — never `Math.random` per call. */
 		this._seq = 0;
-		/** @type {Map<string, { resolve: Function, reject: Function, timer: unknown, path: string }>} */
+		/** @type {Map<string, { resolve: Function, reject: Function, timer: any, path: string }>} */
 		this._pending = new Map();
 	}
 
@@ -139,7 +139,7 @@ export class PendingTable {
 	 * Remove and return a pending entry, clearing its timer — the single choke point that makes
 	 * settling once-only.
 	 * @param {string} callId - Correlation id.
-	 * @returns {{ resolve: Function, reject: Function, timer: unknown, path: string }|null} The entry, or null when already settled.
+	 * @returns {{ resolve: Function, reject: Function, timer: any, path: string }|null} The entry, or null when already settled.
 	 */
 	_take(callId) {
 		const entry = this._pending.get(callId);
@@ -160,7 +160,13 @@ export class PendingTable {
  * @throws {TypeError} When the object does not satisfy the contract.
  */
 export function assertChannel(channel, who) {
-	if (channel === null || typeof channel !== "object" || typeof channel.send !== "function" || typeof channel.onMessage !== "function") {
+	const candidate = /** @type {Record<string, unknown>|null} */ (channel);
+	if (
+		candidate === null ||
+		typeof candidate !== "object" ||
+		typeof candidate.send !== "function" ||
+		typeof candidate.onMessage !== "function"
+	) {
 		throw new TypeError(`@cldmv/slothlet-vine: ${who}() needs a Channel — an object with send(message) and onMessage(handler)`);
 	}
 }
@@ -174,7 +180,7 @@ export function assertChannel(channel, who) {
  * @throws {TypeError} When the object is not a usable slothlet instance.
  */
 export function assertApi(api, who, needs) {
-	const surface = api && typeof api === "object" ? api.slothlet?.api : undefined;
+	const surface = api && typeof api === "object" ? /** @type {Record<string, any>} */ (api).slothlet?.api : undefined;
 	const missing = surface ? needs.filter((name) => typeof surface[name] !== "function") : needs;
 	if (missing.length > 0) {
 		throw new TypeError(

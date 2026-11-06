@@ -26,10 +26,12 @@
 	"sideEffects": false,
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.mjs",
+	"types": "./types/src/index.d.mts",
 	"files": [
 		"dist/",
 		"!dist/**/*.map",
-		"schemas/"
+		"schemas/",
+		"types/"
 	],
 	"repository": {
 		"type": "git",
@@ -54,57 +56,71 @@
 	"exports": {
 		".": {
 			"slothlet-vine-dev": {
+				"types": "./types/src/index.d.mts",
 				"import": "./src/index.mjs",
 				"require": "./src/index.cjs"
 			},
+			"types": "./types/src/index.d.mts",
 			"import": "./dist/index.mjs",
 			"require": "./dist/index.cjs"
 		},
 		"./transport/loopback": {
 			"slothlet-vine-dev": {
+				"types": "./types/src/transport/loopback.d.mts",
 				"import": "./src/transport/loopback.mjs",
 				"require": "./src/transport/loopback.cjs"
 			},
+			"types": "./types/src/transport/loopback.d.mts",
 			"import": "./dist/transport/loopback.mjs",
 			"require": "./dist/transport/loopback.cjs"
 		},
 		"./transport/post-message": {
 			"slothlet-vine-dev": {
+				"types": "./types/src/transport/post-message.d.mts",
 				"import": "./src/transport/post-message.mjs",
 				"require": "./src/transport/post-message.cjs"
 			},
+			"types": "./types/src/transport/post-message.d.mts",
 			"import": "./dist/transport/post-message.mjs",
 			"require": "./dist/transport/post-message.cjs"
 		},
 		"./transport/worker-threads": {
 			"slothlet-vine-dev": {
+				"types": "./types/src/transport/worker-threads.d.mts",
 				"import": "./src/transport/worker-threads.mjs",
 				"require": "./src/transport/worker-threads.cjs"
 			},
+			"types": "./types/src/transport/worker-threads.d.mts",
 			"import": "./dist/transport/worker-threads.mjs",
 			"require": "./dist/transport/worker-threads.cjs"
 		},
 		"./transport/process": {
 			"slothlet-vine-dev": {
+				"types": "./types/src/transport/process.d.mts",
 				"import": "./src/transport/process.mjs",
 				"require": "./src/transport/process.cjs"
 			},
+			"types": "./types/src/transport/process.d.mts",
 			"import": "./dist/transport/process.mjs",
 			"require": "./dist/transport/process.cjs"
 		},
 		"./transport/websocket": {
 			"slothlet-vine-dev": {
+				"types": "./types/src/transport/websocket.d.mts",
 				"import": "./src/transport/websocket.mjs",
 				"require": "./src/transport/websocket.cjs"
 			},
+			"types": "./types/src/transport/websocket.d.mts",
 			"import": "./dist/transport/websocket.mjs",
 			"require": "./dist/transport/websocket.cjs"
 		},
 		"./testing": {
 			"slothlet-vine-dev": {
+				"types": "./types/src/testing/conformance.d.mts",
 				"import": "./src/testing/conformance.mjs",
 				"require": "./src/testing/conformance.cjs"
 			},
+			"types": "./types/src/testing/conformance.d.mts",
 			"import": "./dist/testing/conformance.mjs",
 			"require": "./dist/testing/conformance.cjs"
 		},
@@ -123,8 +139,10 @@
 	},
 	"scripts": {
 		"build": "tsup",
-		"build:ci": "npm run lint && npm run format:check && npm run build",
+		"build:ci": "npm run lint && npm run format:check && npm run types:check && npm run types:build && npm run build",
 		"prepack": "npm run build",
+		"types:build": "tsc -p .configs/tsconfig.json --noCheck",
+		"types:check": "tsc -p .configs/tsconfig.json --noEmit",
 		"test": "node tests/run-vitest.mjs && npm run test:dist",
 		"test:dist": "npm run build && node --conditions=slothlet-vine-dev --test tests/cjs/entry.test.cjs",
 		"test:watch": "vitest --config .configs/vitest.config.mjs",
@@ -161,6 +179,7 @@
 		"@eslint/js": "^10.0.1",
 		"@eslint/json": "^2.1.1",
 		"@eslint/markdown": "^8.0.3",
+		"@types/node": "^26.6.6",
 		"@vitest/coverage-v8": "^5.0.5",
 		"eslint": "^10.14.0",
 		"globals": "^17.14.0",

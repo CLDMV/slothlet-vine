@@ -139,7 +139,7 @@ on:
                 description: "Command to run type checking"
                 type: string
                 required: false
-                default: "npm run test:types"
+                default: "npm run types:check"
             skip_type_check:
                 description: "Skip the type-check step in the coverage-badge job"
                 type: boolean
@@ -271,13 +271,9 @@ jobs:
             # The coverage legs build before measuring; run the real build (lint + format:check + tsup).
             coverage_build_command: "npm run build:ci"
 
-            # ── Type check (runs inside the coverage-badge job) ────────────────────
-            # Skipped deliberately: slothlet-vine is a plain-ESM, JSDoc-typed library with
-            # no TypeScript build or typegen wired; there is no test:types script yet.
-            # Revisit (wire tsc --checkJs or generated .d.ts + enable) once the real
-            # implementation lands with the browser spike.
-            type_check_command: ${{ github.event.inputs.type_check_command || 'npm run test:types' }}
-            skip_type_check: true
+            # ── Type check (own Type Check job, and again inside the coverage-badge job) ──
+            type_check_command: ${{ github.event.inputs.type_check_command || 'npm run types:check' }}
+            skip_type_check: ${{ github.event.inputs.skip_type_check == 'true' }}
 
             # ── PR coverage badge ─────────────────────────────────────────────────
             # Injects a Shields.io badge + breakdown table directly into the PR body

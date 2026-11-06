@@ -145,7 +145,7 @@ export async function serve(api, channel, options = {}) {
 	// subscriptions to this instance's events, AND can subscribe to the far instance's events through
 	// the returned `event` surface. `budgetMs` — a grow-side concern for calls — is here the sub-ack
 	// handshake budget for THIS end's own outgoing subscriptions.
-	const budgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0 ? Number(options.budgetMs) : 30_000;
+	const budgetMs = Number.isFinite(options.budgetMs) && /** @type {number} */ (options.budgetMs) > 0 ? Number(options.budgetMs) : 30_000;
 	const events = createEventForwarder({ api, channel, budgetMs, principal, ended: () => (closed ? "closed" : null) });
 
 	channel.onMessage((message) => {
@@ -166,7 +166,7 @@ export async function serve(api, channel, options = {}) {
 
 	/**
 	 * Invoke one call frame and send back exactly one terminal frame.
-	 * @param {{ callId: string, path: string, args: unknown[] }} frame - The parsed call.
+	 * @param {import("./lib/frame.mjs").Frame} frame - The parsed call (`callId`, `path`, `args`, optional `context`).
 	 * @returns {Promise<void>} Resolves once a terminal frame has been attempted.
 	 */
 	async function answer(frame) {
@@ -290,7 +290,8 @@ export async function serve(api, channel, options = {}) {
 	 *   `VINE_CONTEXT` when its requested context was refused; `VINE_DATA_ONLY` for one that is not data.
 	 */
 	async function answerAs(callId, path, args, requested) {
-		const who = principal.resolve();
+		// `answerAs` is only reached when a principal is bound.
+		const who = /** @type {import("./lib/principal.mjs").BoundPrincipal} */ (principal).resolve();
 		if (!who) throw denied(path, null);
 		const accepted = requested === undefined ? null : await accept(requested, who, path, args);
 		const context = accepted === null ? (who.context ?? {}) : { ...accepted, ...(who.context ?? {}) };
@@ -330,7 +331,7 @@ export async function serve(api, channel, options = {}) {
 	 */
 	async function scoped(context, path, who, body) {
 		/** @type {{ value: unknown }|{ err: unknown }|null} Set ONLY by `fn` — null means the scope never ran it. */
-		let outcome = null;
+		let outcome = /** @type {{ value: unknown }|{ err: unknown }|null} */ (null);
 		try {
 			await api.slothlet.context.scope({
 				context,
@@ -423,7 +424,10 @@ export async function serve(api, channel, options = {}) {
 				channel.send(
 					errorFrame(
 						frame.callId,
-						new VineError(CODES.BAD_FRAME, `slothlet-vine: result could not be sent: ${err?.message ?? String(err)}`)
+						new VineError(
+							CODES.BAD_FRAME,
+							`slothlet-vine: result could not be sent: ${/** @type {Error|undefined} */ (err)?.message ?? String(err)}`
+						)
 					)
 				);
 			} catch {
@@ -548,7 +552,7 @@ function copyArgs(path, args) {
 	} catch (err) {
 		throw new VineError(
 			CODES.DATA_ONLY,
-			`slothlet-vine: '${path}' was called with arguments that cannot be copied (${err?.message ?? String(err)}) — the vine is data-only`,
+			`slothlet-vine: '${path}' was called with arguments that cannot be copied (${/** @type {Error|undefined} */ (err)?.message ?? String(err)}) — the vine is data-only`,
 			{ path }
 		);
 	}
@@ -578,7 +582,7 @@ function copyArgs(path, args) {
  */
 async function invoke(api, path, args) {
 	const segments = path.split(".");
-	const last = segments.pop();
+	const last = /** @type {string} */ (segments.pop());
 	let parent = api;
 	for (const segment of segments) {
 		parent = parent?.[segment];
