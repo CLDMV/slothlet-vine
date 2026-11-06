@@ -45,7 +45,11 @@ export default mergeConfig(
 				provider: "v8",
 				include: ["src/**/*.mjs"],
 				exclude: ["**/*.json", "tests/**"],
-				reporter: ["text", "html", "json-summary", "json"]
+				reporter: ["text", "html", "json-summary", "json"],
+				// The standard for this repo is full coverage; a drop fails the run instead of drifting. The runner
+				// runs each test file in its own coverage process and then merges the blobs, so a threshold can only
+				// be judged on the merge step (`--mergeReports`): a single file never covers the whole of src/.
+				thresholds: process.argv.includes("--mergeReports") ? { lines: 100, branches: 100, functions: 100, statements: 100 } : undefined
 			}
 		}
 	})

@@ -301,6 +301,20 @@ describe("around — invoke() runs exactly the call that was accepted", () => {
 		expect(nested.api.calls).toEqual([{ n: 1 }]);
 	});
 
+	it("a non-Error thrown while copying the arguments is still reported VINE_DATA_ONLY", async () => {
+		const { channel } = await served({ around: () => {} });
+		// The data-only scan skips accessors, so only the structured-clone read hits this bare string throw.
+		const arg = {
+			get n() {
+				throw "unreadable";
+			}
+		};
+		const frame = await call(channel, "math.add", [arg, 2]);
+		expect(frame.type).toBe("error");
+		expect(frame.error.code).toBe(CODES.DATA_ONLY);
+		expect(frame.error.message).toMatch(/cannot be copied \(unreadable\)/);
+	});
+
 	it("arguments structured clone refuses answer VINE_DATA_ONLY and around never runs", async () => {
 		let ran = false;
 		const { api, channel } = await served({
