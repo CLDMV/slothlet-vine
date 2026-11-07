@@ -19,6 +19,26 @@ import { createInbox } from "../lib/inbox.mjs";
 const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
 
 /**
+ * A {@link PostMessagePort} already known to have web-style listener registration.
+ *
+ * @typedef {PostMessagePort & Required<Pick<PostMessagePort, "addEventListener"|"removeEventListener">>} ListenablePort
+ */
+
+/**
+ * The port surface this transport needs. Both a DOM/node `MessagePort`/`Worker` and a plain legacy
+ * object with a settable `onmessage` satisfy it; the listener-registration members are probed at
+ * runtime to pick the dispatch style.
+ *
+ * @typedef {object} PostMessagePort
+ * @property {(message: object) => void} postMessage - Post one frame to the far side.
+ * @property {(type: string, listener: Function) => void} [addEventListener] - Web-style listener registration.
+ * @property {(type: string, listener: Function) => void} [removeEventListener] - Web-style listener removal.
+ * @property {Function} [on] - Present on EventEmitter-style objects (refused: they cannot receive here).
+ * @property {Function|null} [onmessage] - Legacy message setter.
+ * @property {() => void} [close] - Close the port, when it has one.
+ */
+
+/**
  * Wrap a `postMessage` port as a Channel.
  *
  * Works over any object exposing `postMessage(frame)` plus an `addEventListener('message', fn)`-style
@@ -47,12 +67,12 @@ const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
  * The core never depends on `onClose` for correctness — a pending call also settles on its budget —
  * so a medium without death detection degrades to slower settling, never a hang.
  *
- * @param {object} port - Anything with `postMessage(frame)` and a `message` event (NOT a node
+ * @param {PostMessagePort} port - Anything with `postMessage(frame)` and a `message` event (NOT a node
  *   `worker_threads` `Worker` handle — see above).
  * @param {object} [options] - Transport options.
  * @param {string[]} [options.deathEvents] - Extra event names to treat as a close signal, UNIONed
  *   with the defaults (`"close"`, `"messageerror"`). Use `["error"]` for a browser `Worker`.
- * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
+ * @returns {import("../index.mjs").Channel} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  *
  * @example
  * // node worker_threads, two instances on the main thread over one MessageChannel:
@@ -66,6 +86,7 @@ const DEFAULT_DEATH_EVENTS = ["close", "messageerror"];
  * const channel = createChannel(new Worker("./serve.js"), { deathEvents: ["error"] });
  */
 export function createChannel(port, options = {}) {
+	// `port` is untrusted at runtime however it is typed: a non-object or one without `postMessage` is refused.
 	if (port === null || typeof port !== "object" || typeof port.postMessage !== "function") {
 		throw new TypeError(
 			"@cldmv/slothlet-vine: transport/post-message needs a port with postMessage(frame) (a browser Worker, a MessagePort, or a node worker_threads MessagePort — not a node worker_threads Worker handle; use transport/worker-threads for that)"
@@ -129,11 +150,11 @@ export function createChannel(port, options = {}) {
 	}
 
 	if (useAddEventListener) {
-		port.addEventListener("message", onMessageEvent);
+		/** @type {ListenablePort} */ (port).addEventListener("message", onMessageEvent);
 		attached.push(["message", onMessageEvent]);
 		for (const event of deathEvents) {
 			const listener = makeDeathListener(event);
-			port.addEventListener(event, listener);
+			/** @type {ListenablePort} */ (port).addEventListener(event, listener);
 			attached.push([event, listener]);
 		}
 	} else {
@@ -142,7 +163,7 @@ export function createChannel(port, options = {}) {
 		port.onmessage = onMessageEvent;
 		for (const event of deathEvents) {
 			const prop = `on${event}`;
-			if (prop in port) port[prop] = makeDeathListener(event);
+			if (prop in port) /** @type {Record<string, unknown>} */ (port)[prop] = makeDeathListener(event);
 		}
 	}
 
@@ -211,7 +232,7 @@ export function createChannel(port, options = {}) {
 			if (useAddEventListener) {
 				for (const [event, listener] of attached) {
 					try {
-						port.removeEventListener(event, listener);
+						/** @type {ListenablePort} */ (port).removeEventListener(event, listener);
 					} catch {
 						// Detaching is best-effort; a port that refuses removal must not fault close().
 					}
@@ -225,7 +246,7 @@ export function createChannel(port, options = {}) {
 				for (const event of deathEvents) {
 					const prop = `on${event}`;
 					try {
-						if (prop in port) port[prop] = null;
+						if (prop in port) /** @type {Record<string, unknown>} */ (port)[prop] = null;
 					} catch {
 						// Best-effort.
 					}
@@ -249,7 +270,7 @@ export function createChannel(port, options = {}) {
  * @returns {boolean} True when the error is a structured-clone refusal.
  */
 function isCloneRefusal(err) {
-	return err !== null && typeof err === "object" && err.name === "DataCloneError";
+	return err !== null && typeof err === "object" && /** @type {{ name?: unknown }} */ (err).name === "DataCloneError";
 }
 
 /**

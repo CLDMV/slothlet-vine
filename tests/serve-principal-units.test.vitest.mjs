@@ -29,6 +29,7 @@ import { createPair } from "../src/transport/loopback.mjs";
 function fakeChannel(behaviour = {}) {
 	const sent = [];
 	let handler = null;
+	let closeHandler = null;
 	const channel = {
 		sent,
 		send(frame) {
@@ -38,7 +39,16 @@ function fakeChannel(behaviour = {}) {
 			handler = fn;
 			if (behaviour.syncSurface) fn({ type: "surface", v: 1, leaves: [] });
 		},
-		onClose() {},
+		onClose(fn) {
+			closeHandler = fn;
+		},
+		/**
+		 * Report the far side dead, as a transport's death signal would.
+		 * @returns {void}
+		 */
+		die() {
+			closeHandler?.({ reason: "test" });
+		},
 		/**
 		 * @param {unknown} frame - The frame to push at the handler.
 		 * @returns {void}
@@ -896,5 +906,55 @@ describe("requested context (#79) — the scope seam, on a fake instance", () =>
 		await expect(serve(fakeApi({ noScope: true }), fakeChannel(), { context: (r) => r })).rejects.toThrow(
 			/context check needs a working api\.slothlet\.context\.scope\(\)/
 		);
+	});
+
+	it("with a principal that carries no context: the scope holds just the accepted keys", async () => {
+		const { api, channel } = await served({}, { principal: "remote.renderer", context: (requested) => requested });
+		expect((await callWith(channel, { project: "A" })).value).toBe(3);
+		expect(api.scopes).toEqual([{ context: { project: "A" }, protect: ["project"] }]);
+	});
+});
+
+describe("serve and grow — event surface lifecycle", () => {
+	it("serve: a custom budgetMs is accepted, and event.on / event.once refuse once the serving is closed", async () => {
+		const { serving } = await served({}, { budgetMs: 1234 });
+		serving.close();
+		await expect(serving.event.on("jobs.done", () => {})).rejects.toMatchObject({ code: CODES.CLOSED });
+		await expect(serving.event.once("jobs.done", () => {})).rejects.toMatchObject({ code: CODES.CLOSED });
+	});
+
+	it("serve: a frame that is not a call or an event frame (here a result) is ignored", async () => {
+		const { channel } = await served({}, {});
+		const before = channel.sent.length;
+		channel.deliver({ type: "result", callId: "x", value: 1 });
+		channel.deliver({ type: "surface", v: 1, leaves: [] });
+		await tick();
+		expect(channel.sent).toHaveLength(before);
+	});
+
+	it("grow: event.on refuses with VINE_CLOSED after link.close() and VINE_GONE once the far side is dead", async () => {
+		const closedChannel = fakeChannel({ syncSurface: true });
+		const closedLink = await grow(fakeApi(), closedChannel);
+		await closedLink.close();
+		await expect(closedLink.event.on("jobs.done", () => {})).rejects.toMatchObject({ code: CODES.CLOSED });
+
+		const goneChannel = fakeChannel({ syncSurface: true });
+		const goneLink = await grow(fakeApi(), goneChannel);
+		goneChannel.die();
+		await expect(goneLink.event.on("jobs.done", () => {})).rejects.toMatchObject({ code: CODES.GONE });
+	});
+
+	it("grow: event.once subscribes for one delivery and resolves with the granted level", async () => {
+		const channel = fakeChannel({ syncSurface: true });
+		const link = await grow(fakeApi(), channel);
+		const got = [];
+		const pending = link.event.once("jobs.done", (payload) => got.push(payload));
+		const { subId } = channel.ofType("sub")[0];
+		channel.deliver({ type: "sub-ack", subId, level: "allow" });
+		const { level } = await pending;
+		expect(level).toBe("allow");
+		channel.deliver({ type: "event", subId, event: "jobs.done", at: 1, instanceID: "far", hasPayload: true, payload: { n: 1 } });
+		expect(got).toEqual([{ n: 1 }]);
+		expect(channel.ofType("unsub")).toEqual([{ type: "unsub", subId }]);
 	});
 });

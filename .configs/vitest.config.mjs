@@ -13,7 +13,8 @@
  *
  */
 
-import { defineConfig } from "vitest/config";
+import { defineConfig, mergeConfig } from "vitest/config";
+import { devCondition } from "@cldmv/configs/vitest.config.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -21,40 +22,35 @@ import path from "node:path";
 // matter what cwd vitest is invoked from.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-export default defineConfig({
-	root,
-	resolve: {
-		// Replaces the defaults, so keep the usual ones alongside the package's own
-		// condition (which routes every export to src/).
-		conditions: ["slothlet-vine-dev", "module", "browser", "development|production"]
-	},
-	ssr: {
-		// Vitest often goes through the SSR resolve pipeline even in node tests.
-		resolve: {
-			conditions: ["slothlet-vine-dev", "node", "development|production"]
+// devCondition() reads the package's "-dev" export condition and sets resolve/ssr conditions plus test.execArgv, so
+// Vite and the Node workers both load src/.
+export default mergeConfig(
+	devCondition({ root }),
+	defineConfig({
+		root,
+		test: {
+			include: ["tests/**/*.test.vitest.mjs"],
+			exclude: ["node_modules"],
+			environment: "node",
+			testTimeout: 30000,
+			// "dot" keeps CI logs to one character per test file instead of a full
+			// "RUN vX.Y.Z" + per-file pass/fail block for every file — vitest's
+			// non-interactive fallback (no TTY to redraw) otherwise reprints that
+			// whole block per file on top of the final aggregate summary, which
+			// dominates the log on a suite this size. The final "Test Files X
+			// passed" / "Tests Y passed" summary is unaffected — every built-in
+			// reporter prints it regardless of per-test verbosity.
+			reporters: ["dot"],
+			coverage: {
+				provider: "v8",
+				include: ["src/**/*.mjs"],
+				exclude: ["**/*.json", "tests/**"],
+				reporter: ["text", "html", "json-summary", "json"],
+				// Coverage must stay at 100%: a drop makes the coverage run (and so CI) fail. The runner executes every
+				// test file in its own vitest process (--reporter=blob) and merges the blobs afterwards; a single file never
+				// covers all of src/, so the threshold applies to the merged report and to plain `vitest --coverage` runs only.
+				thresholds: process.argv.includes("--reporter=blob") ? undefined : { lines: 100, branches: 100, functions: 100, statements: 100 }
+			}
 		}
-	},
-	test: {
-		include: ["tests/**/*.test.vitest.mjs"],
-		exclude: ["node_modules"],
-		environment: "node",
-		testTimeout: 30000,
-		// Workers get the condition on their node CLI (execArgv), so Node's own resolver
-		// loads src/ too.
-		nodeOptions: ["--conditions=slothlet-vine-dev"],
-		// "dot" keeps CI logs to one character per test file instead of a full
-		// "RUN vX.Y.Z" + per-file pass/fail block for every file — vitest's
-		// non-interactive fallback (no TTY to redraw) otherwise reprints that
-		// whole block per file on top of the final aggregate summary, which
-		// dominates the log on a suite this size. The final "Test Files X
-		// passed" / "Tests Y passed" summary is unaffected — every built-in
-		// reporter prints it regardless of per-test verbosity.
-		reporters: ["dot"],
-		coverage: {
-			provider: "v8",
-			include: ["src/**/*.mjs"],
-			exclude: ["**/*.json", "tests/**"],
-			reporter: ["text", "html", "json-summary", "json"]
-		}
-	}
-});
+	})
+);

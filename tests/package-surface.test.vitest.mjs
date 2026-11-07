@@ -51,9 +51,10 @@ describe("package surface", () => {
 
 	it("package.json exports map lists every published subpath", () => {
 		const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"));
-		/** The export entry for a source path: dev condition → src/, otherwise the built dist/ files. */
+		/** The export entry for a source path: dev condition → src/, otherwise the built dist/ files; `types` leads in both. */
 		const entry = (src, dist = src) => ({
-			"slothlet-vine-dev": { import: `./src/${src}.mjs`, require: `./src/${src}.cjs` },
+			"slothlet-vine-dev": { types: `./types/src/${src}.d.mts`, import: `./src/${src}.mjs`, require: `./src/${src}.cjs` },
+			types: `./types/src/${src}.d.mts`,
 			import: `./dist/${dist}.mjs`,
 			require: `./dist/${dist}.cjs`
 		});
@@ -62,12 +63,13 @@ describe("package surface", () => {
 		expect(pkg.exports["./testing"]).toEqual(entry("testing/conformance"));
 		expect(pkg.main).toBe("./dist/index.cjs");
 		expect(pkg.module).toBe("./dist/index.mjs");
+		expect(pkg.types).toBe("./types/src/index.d.mts");
 		expect(pkg.peerDependencies["@cldmv/slothlet"]).toBeTruthy();
 	});
 
 	it("publishes the build, not the source", () => {
 		const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"));
-		expect(pkg.files).toEqual(["dist/", "!dist/**/*.map", "schemas/"]);
+		expect(pkg.files).toEqual(["dist/", "!dist/**/*.map", "schemas/", "types/"]);
 		expect(pkg.engines.node).toBe(">=22.15.0");
 	});
 });

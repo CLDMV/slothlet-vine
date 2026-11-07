@@ -81,7 +81,7 @@ export class VineError extends Error {
 		if (details && typeof details === "object") {
 			for (const key of Object.keys(details)) {
 				if (RESERVED_DETAIL_KEYS.has(key)) continue;
-				this[key] = details[key];
+				Object.assign(this, { [key]: details[key] });
 			}
 		}
 	}
@@ -154,11 +154,13 @@ export function toWire(err) {
 	// Every read is guarded: `err` is whatever the leaf threw, and a throwing accessor here would
 	// replace a reportable failure with an unreportable one on the error path itself.
 	try {
+		// Duck-typed read of an arbitrary thrown value; each field is type-checked before use.
+		const thrown = /** @type {Record<string, unknown>} */ (err);
 		/** @type {{ name: string, message: string, code?: string, stack?: string }} */
-		const wire = { name: safeString(err.name, "Error"), message: safeString(err.message, "") };
-		if (typeof err.code === "string") wire.code = err.code;
-		else if (typeof err.code === "number") wire.code = String(err.code);
-		if (typeof err.stack === "string") wire.stack = err.stack;
+		const wire = { name: safeString(thrown.name, "Error"), message: safeString(thrown.message, "") };
+		if (typeof thrown.code === "string") wire.code = thrown.code;
+		else if (typeof thrown.code === "number") wire.code = String(thrown.code);
+		if (typeof thrown.stack === "string") wire.stack = thrown.stack;
 		return wire;
 	} catch {
 		return { name: "Error", message: "" };
@@ -182,7 +184,7 @@ export function fromWire(wire) {
 /**
  * Read one property as a string, tolerating a hostile source: a throwing getter, an exotic Proxy, or
  * a non-string value all answer `undefined` instead of propagating.
- * @param {object} source - The (untrusted) object to read from.
+ * @param {Record<string, unknown>} source - The (untrusted) object to read from.
  * @param {string} key - Property name.
  * @returns {string|undefined} The string value, or undefined when absent / not a string / unreadable.
  */

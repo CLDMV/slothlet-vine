@@ -26,7 +26,7 @@ export const DEFAULT_BUDGET_MS = 30_000;
  * Grow a vine from this instance to the far tree on `channel`: await the far side's `surface` frame,
  * mount a forwarding stub per leaf, and return the live link.
  *
- * @param {object} api - The local slothlet instance (the object `slothlet()` returned).
+ * @param {import("./index.mjs").SlothletApi} api - The local slothlet instance (the object `slothlet()` returned).
  * @param {import("./index.mjs").Channel} channel - The transport seam.
  * @param {object} [options]
  * @param {number} [options.budgetMs=30000] - Per-call settle budget; expiry settles that call with
@@ -65,7 +65,7 @@ export const DEFAULT_BUDGET_MS = 30_000;
  *   carrying one is refused locally (`VINE_CONTEXT`, nothing sent) when the far side did not advertise
  *   that it accepts requested contexts; a resolver that throws rejects that call with its error, and
  *   an answer that is not data rejects it `VINE_DATA_ONLY`.
- * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}> }>}
+ * @returns {Promise<{ id: string, leaves: string[], skipped: string[], collisions: string[], context: boolean, with: Function, close: () => Promise<void>, closed: Promise<{reason: string, info?: object}>, event: import("./index.mjs").EventSurface }>}
  *   The live link. The three path lists are DISJOINT and together account for every leaf the far
  *   side published: `leaves` are the paths actually mounted and forwarding; `skipped` are far leaves
  *   refused locally (unsafe path, outside `paths`, rejected by `add()`, or published after the link
@@ -100,7 +100,8 @@ export async function grow(api, channel, options = {}) {
 			"grow"
 		);
 
-	const budgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0 ? Number(options.budgetMs) : DEFAULT_BUDGET_MS;
+	const budgetMs =
+		Number.isFinite(options.budgetMs) && /** @type {number} */ (options.budgetMs) > 0 ? Number(options.budgetMs) : DEFAULT_BUDGET_MS;
 	const handshakeMs = handshakeBudget(options.handshakeMs, budgetMs);
 	const prefixes = Array.isArray(options.paths) ? options.paths.filter((p) => typeof p === "string" && p.length > 0) : null;
 	const defaultContext = bindDefaultContext(options.context);
@@ -144,9 +145,9 @@ export async function grow(api, channel, options = {}) {
 	// handshake outcomes are CAPTURED first and replayed into the promise when it is created —
 	// without this, an early surface is swallowed by a placeholder and `await grow(...)` never
 	// settles at all (the handshake timer sees the handshake as already settled and stands down).
-	/** @type {{ surface: object|null, error: Error|null }} */
+	/** @type {{ surface: import("./lib/frame.mjs").Frame|null, error: Error|null }} */
 	const captured = { surface: null, error: null };
-	/** @type {(surface: {leaves: string[], unsafe: string[]}) => void} */
+	/** @type {(surface: import("./lib/frame.mjs").Frame) => void} */
 	let onSurface = (frame) => {
 		captured.surface = frame;
 	};
@@ -156,6 +157,7 @@ export async function grow(api, channel, options = {}) {
 	};
 	let surfaceSettled = false;
 
+	/** @type {(outcome: {reason: string, info?: object}) => void} */
 	let resolveClosed;
 	/** @type {Promise<{reason: string, info?: object}>} */
 	const closedPromise = new Promise((resolve) => {
@@ -376,10 +378,14 @@ export async function grow(api, channel, options = {}) {
 				// socket. Settle now rather than leaving the entry to time out on its budget.
 				pending.reject(
 					callId,
-					new VineError(CODES.BAD_FRAME, `slothlet-vine: call to '${path}' could not be sent: ${err?.message ?? String(err)}`, {
-						path,
-						callId
-					})
+					new VineError(
+						CODES.BAD_FRAME,
+						`slothlet-vine: call to '${path}' could not be sent: ${/** @type {Error|undefined} */ (err)?.message ?? String(err)}`,
+						{
+							path,
+							callId
+						}
+					)
 				);
 			}
 			return settled;
@@ -392,7 +398,7 @@ export async function grow(api, channel, options = {}) {
 		 * Event-forwarding surface, mirroring slothlet's own `event.on` / `event.once` shape — async
 		 * here because the granted level is resolved across the boundary. `on(event, listener, { once })`
 		 * / `once(event, listener)` return `Promise<{ level, off }>`. See {@link import("./lib/events.mjs")}.
-		 * @type {{ on: Function, once: Function }}
+		 * @type {import("./index.mjs").EventSurface}
 		 */
 		event: {
 			on: (eventName, listener, options = {}) => events.subscribe(eventName, listener, options?.once === true),
@@ -499,7 +505,7 @@ export async function grow(api, channel, options = {}) {
  * `remove`), throwing, or answering something that is not a record list — every mounted path counts
  * as owned. That is the pre-existing behaviour and it keeps the fallback's real purpose intact: a
  * `remove(moduleID)` that silently unmounts NOTHING must still leave no callable stub behind.
- * @param {object} api - The slothlet instance.
+ * @param {import("./index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} moduleID - The link's module id.
  * @param {string[]} paths - The paths this link mounted.
  * @returns {Promise<Set<string>>} The subset still owned by the link (or all of them, when unknown).
@@ -531,7 +537,7 @@ function validContext(value, where) {
 			{ location: fault }
 		);
 	}
-	return structuredClone(value);
+	return /** @type {object} */ (structuredClone(value));
 }
 
 /**
@@ -579,16 +585,17 @@ function handshakeBudget(value, fallback) {
  * Does a dotted path already resolve to something on the local api? Used only to REPORT collisions —
  * the mount itself never overwrites. Any failure while probing counts as "no collision": this is
  * diagnostics, and a lazy namespace that objects to being read is not a reason to fail a link.
- * @param {object} api - The slothlet instance.
+ * @param {import("./index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} path - Validated dotted path.
  * @returns {boolean} True when something already lives at that path.
  */
 function resolves(api, path) {
 	try {
+		/** @type {unknown} */
 		let node = api;
 		for (const segment of path.split(".")) {
 			if (node === null || (typeof node !== "object" && typeof node !== "function")) return false;
-			node = node[segment];
+			node = /** @type {Record<string, unknown>} */ (node)[segment];
 		}
 		return node !== undefined;
 	} catch {

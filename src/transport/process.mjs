@@ -16,11 +16,26 @@
 import { createInbox } from "../lib/inbox.mjs";
 
 /**
+ * The IPC surface of a `ChildProcess` (parent) or `process` (child) that this transport drives. Both
+ * constructors validate `send` and `on` first (the target is documented as test-double-friendly), so
+ * the rest are probed where used.
+ *
+ * @typedef {{
+ *   send(message: object, callback?: (err: Error|null) => void): unknown,
+ *   on(event: string, listener: Function): unknown,
+ *   off?(event: string, listener: Function): unknown,
+ *   removeListener?(event: string, listener: Function): unknown,
+ *   connected?: boolean,
+ *   disconnect?(): void
+ * }} IpcTarget
+ */
+
+/**
  * Wrap a forked `ChildProcess` (parent side of the boundary). Send/receive ride the child's IPC
  * channel; `onClose` fires the first time the child dies or disconnects.
  *
  * @param {import("node:child_process").ChildProcess} child - The process returned by `fork(...)`.
- * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
+ * @returns {import("../index.mjs").Channel} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  * @throws {TypeError} When `child` is not a ChildProcess-shaped object (no `send`/`on`).
  *
  * @example
@@ -53,8 +68,8 @@ export function createChannel(child) {
  * so the endpoint can be driven against a fake in tests without attaching to the real IPC channel.
  * Production code calls it with no arguments.
  *
- * @param {NodeJS.Process|object} [proc=process] - The process to wrap (defaults to the current one).
- * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
+ * @param {NodeJS.Process|Partial<IpcTarget>} [proc=process] - The process to wrap (defaults to the current one).
+ * @returns {import("../index.mjs").Channel} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  * @throws {TypeError} When `proc` has no `send` (not forked with an IPC channel).
  *
  * @example
@@ -72,7 +87,7 @@ export function createParentChannel(proc = process) {
 			"@cldmv/slothlet-vine: transport/process createParentChannel() must run in a process forked with an IPC channel (process.send is undefined otherwise)"
 		);
 	}
-	return makeEndpoint(proc, "child");
+	return makeEndpoint(/** @type {IpcTarget} */ (proc), "child");
 }
 
 /**
@@ -88,9 +103,9 @@ export function createParentChannel(proc = process) {
  * (CLDMV/slothlet-vine#41). (Node itself holds a `ChildProcess`'s IPC messages until a `"message"`
  * listener exists, so nothing is lost before construction either.)
  *
- * @param {object} target - A `ChildProcess` (parent) or `process` (child).
+ * @param {IpcTarget} target - A `ChildProcess` (parent) or `process` (child).
  * @param {"parent"|"child"} side - Which end this is.
- * @returns {object} The Channel.
+ * @returns {import("../index.mjs").Channel} The Channel.
  */
 function makeEndpoint(target, side) {
 	const isParent = side === "parent";
@@ -131,7 +146,7 @@ function makeEndpoint(target, side) {
 		inbox.deliver(message);
 	}
 
-	/** @returns {void} */
+	/** @param {number|null} code @param {string|null} signal @returns {void} */
 	function onExit(code, signal) {
 		fireClose({ reason: "exit", code, signal });
 	}
@@ -218,7 +233,7 @@ function makeEndpoint(target, side) {
 				return;
 			}
 			try {
-				target.send(message, (err) => {
+				target.send(message, (/** @type {Error|null} */ err) => {
 					// Reached only asynchronously, for a delivery failure on a channel that closed under us
 					// (a serialization refusal is the synchronous throw handled below, never a callback). So
 					// a callback error is a dead channel: report it as death.
@@ -272,7 +287,7 @@ function makeEndpoint(target, side) {
 			detach();
 			if (isParent) {
 				try {
-					if (target.connected) target.disconnect();
+					if (target.connected) /** @type {Required<IpcTarget>} */ (target).disconnect();
 				} catch {
 					// Already disconnected / never connected — nothing to tear down.
 				}
@@ -293,5 +308,10 @@ const DEAD_CHANNEL_CODES = new Set(["ERR_IPC_CHANNEL_CLOSED", "ERR_IPC_DISCONNEC
  * @returns {boolean} True when the error signals a dead IPC channel.
  */
 function isDeadChannelError(err) {
-	return err !== null && typeof err === "object" && typeof err.code === "string" && DEAD_CHANNEL_CODES.has(err.code);
+	return (
+		err !== null &&
+		typeof err === "object" &&
+		typeof (/** @type {{ code?: unknown }} */ (err).code) === "string" &&
+		DEAD_CHANNEL_CODES.has(/** @type {{ code: string }} */ (err).code)
+	);
 }

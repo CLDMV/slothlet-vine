@@ -16,7 +16,7 @@
 import { parentPort as defaultParentPort } from "node:worker_threads";
 import { createInbox } from "../lib/inbox.mjs";
 
-/** The capabilities every worker-threads endpoint declares. @type {{structuredClone: boolean, codec: string, buffersUntilHandler: boolean}} */
+/** The capabilities every worker-threads endpoint declares. @type {{structuredClone: boolean, codec: "none"|"json", buffersUntilHandler: boolean}} */
 const CAPABILITIES = Object.freeze({ structuredClone: true, codec: "none", buffersUntilHandler: true });
 
 /**
@@ -29,7 +29,7 @@ const CAPABILITIES = Object.freeze({ structuredClone: true, codec: "none", buffe
  * worker dying is the point, so `onClose` stays live until you close the channel.
  *
  * @param {import("node:worker_threads").Worker} worker - A live Worker instance.
- * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
+ * @returns {import("../index.mjs").Channel} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  * @throws {TypeError} When `worker` is not an object exposing `postMessage` and `on`.
  *
  * @example
@@ -70,8 +70,8 @@ export function createChannel(worker) {
  * the parameter exists so two ends of a `worker_threads.MessageChannel` can be wrapped and paired in
  * one process for the Channel conformance suite.
  *
- * @param {import("node:worker_threads").MessagePort} [port=parentPort] - The port to wrap.
- * @returns {object} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
+ * @param {import("node:worker_threads").MessagePort|null} [port=parentPort] - The port to wrap.
+ * @returns {import("../index.mjs").Channel} A Channel: `{ send, onMessage, close, onClose, capabilities }`.
  * @throws {TypeError} When no usable port is available (called outside a worker with no `port`).
  *
  * @example
@@ -93,6 +93,17 @@ export function createParentChannel(port = defaultParentPort) {
 }
 
 /**
+ * The surface of a `Worker` or `MessagePort` that this transport drives.
+ *
+ * @typedef {{
+ *   on(event: string, listener: Function): unknown,
+ *   removeListener(event: string, listener: Function): unknown,
+ *   postMessage(message: object): void,
+ *   close?(): unknown
+ * }} ThreadTarget
+ */
+
+/**
  * Build a Channel over a message target (a `Worker` or a `MessagePort`). The two exported endpoints
  * differ only in which events mean "the far side is gone" and whether closing owns the target.
  *
@@ -102,12 +113,12 @@ export function createParentChannel(port = defaultParentPort) {
  * callback is insulated: a throwing `onMessage`/`onClose` handler can never surface as a transport
  * fault, per the Channel contract.
  *
- * @param {object} target - The `Worker` or `MessagePort` to wrap.
+ * @param {ThreadTarget} target - The `Worker` or `MessagePort` to wrap.
  * @param {{ deathEvents: string[], ownsTarget: boolean }} config
  *   `deathEvents` — target events that fire `onClose` (once); `ownsTarget` — whether `close()` also
  *   tears the target down (`target.close()`), which the child-side port owns and the parent-side
  *   worker does not.
- * @returns {object} The Channel.
+ * @returns {import("../index.mjs").Channel} The Channel.
  */
 function makeChannel(target, { deathEvents, ownsTarget }) {
 	/** Queues frames that arrive before the core registers its handler, then replays them in order. */
@@ -242,5 +253,5 @@ function makeChannel(target, { deathEvents, ownsTarget }) {
  * @returns {boolean} True when the error is a structured-clone refusal.
  */
 function isCloneRefusal(err) {
-	return err !== null && typeof err === "object" && err.name === "DataCloneError";
+	return err !== null && typeof err === "object" && /** @type {{ name?: unknown }} */ (err).name === "DataCloneError";
 }

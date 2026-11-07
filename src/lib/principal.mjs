@@ -26,7 +26,7 @@ import { isPlainObject, isSafePath } from "./frame.mjs";
  * @property {() => Readonly<Principal>|null} resolve - The principal for THIS frame, or `null` when the
  *   host's resolver threw or answered something that is not a principal (the frame is then denied).
  *   Never throws.
- * @property {Readonly<Principal>|(() => unknown)} declared - What is exposed for diagnostics: the frozen,
+ * @property {Readonly<Principal>|Function} declared - What is exposed for diagnostics: the frozen,
  *   normalized principal for the string / object forms, or the host's own resolver function for the
  *   function form (its answer is per frame, so there is no single normalized value to show).
  */
@@ -44,7 +44,7 @@ export function normalizePrincipal(value, who) {
 	if (!isPlainObject(candidate)) {
 		throw new TypeError(`@cldmv/slothlet-vine: ${who}() principal must be a dotted path string or a { path, context? } object`);
 	}
-	const { path, context } = candidate;
+	const { path, context } = /** @type {{ path?: unknown, context?: object }} */ (candidate);
 	// A principal is never mounted, so this is hygiene rather than prototype defence — but it keeps
 	// `**`, empty segments, and the reserved `slothlet` root out of a caller identity all the same.
 	if (!isSafePath(path)) {
@@ -113,7 +113,7 @@ export function bindPrincipal(option, who) {
  *   establish one cannot run anything "under" the principal.
  * - `run` only (grow, and only when the static principal carries a `context`): `api.slothlet.context.run`
  *   must work, probed the same way — the event half re-resolves inside `run(principal.context)`.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {{ calls?: boolean, scope?: boolean, run?: boolean }} needs - Which preconditions apply to this end.
  * @param {string} who - `serve` / `grow`, for error messages.
  * @returns {Promise<void>} Resolves when every applicable precondition holds.
@@ -147,7 +147,7 @@ export async function assertPrincipalSupport(api, needs, who) {
  * `scope: false` instance still exposes `scope` as a function that rejects `SCOPE_DISABLED`. Used for
  * a principal (every call runs inside its scope) and for a `context` check on `serve()` (#79: every
  * call carrying an accepted requested context runs inside a scope holding it).
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} who - `serve` / `grow`, for the error message.
  * @param {string} feature - What needs the scope (`a principal`, `a context check`), for the message.
  * @returns {Promise<void>} Resolves when the probe answered `true`.
@@ -160,7 +160,7 @@ export async function assertScopeSupport(api, who, feature) {
 /**
  * Run one context probe and turn any failure — a missing function, a `SCOPE_DISABLED` rejection, a
  * wrong answer — into the setup `TypeError`.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {string} who - `serve` / `grow`.
  * @param {"scope"|"run"} name - Which `api.slothlet.context.*` function is being probed.
  * @param {string} feature - What needs it, for the message.
@@ -174,7 +174,7 @@ async function probe(api, who, name, feature, attempt) {
 		if (typeof api.slothlet?.context?.[name] === "function" && (await attempt()) === true) return;
 		reason = "it is unavailable";
 	} catch (err) {
-		reason = err?.message ?? String(err);
+		reason = /** @type {Error|undefined} */ (err)?.message ?? String(err);
 	}
 	throw new TypeError(
 		`@cldmv/slothlet-vine: ${who}() with ${feature} needs a working api.slothlet.context.${name}() to run each call under its context — ${reason}`
@@ -186,7 +186,7 @@ async function probe(api, who, name, feature, attempt) {
  * for its call gate. Fail-closed on every path: a missing API, a throw, a rejection, or a verdict that
  * is not literally `true` all answer `false`. Called INSIDE the principal's context scope so
  * conditional rules and `requires`-principals see the bound context.
- * @param {object} api - The slothlet instance.
+ * @param {import("../index.mjs").SlothletApi} api - The slothlet instance.
  * @param {Readonly<Principal>} principal - The resolved principal for this frame.
  * @param {string} path - The served leaf path (already validated against the surface).
  * @param {unknown[]} args - The call's arguments, forwarded as `callMeta.args` for rule conditions.
@@ -216,8 +216,8 @@ const LEVEL_RANK = { deny: 0, notify: 1, allow: 2 };
  * @returns {"deny"|"notify"|"allow"} The narrower of the two.
  */
 export function narrowest(a, b) {
-	const ra = LEVEL_RANK[a] ?? 0;
-	const rb = LEVEL_RANK[b] ?? 0;
+	const ra = LEVEL_RANK[/** @type {string} */ (a)] ?? 0;
+	const rb = LEVEL_RANK[/** @type {string} */ (b)] ?? 0;
 	const rank = Math.min(ra, rb);
 	return rank === 2 ? "allow" : rank === 1 ? "notify" : "deny";
 }

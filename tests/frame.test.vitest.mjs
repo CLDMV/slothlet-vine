@@ -216,6 +216,38 @@ describe("parseFrame", () => {
 		expect(parseFrame({ type: "error", callId: null, error: {} })).toBeNull();
 	});
 
+	it.each([
+		["sub", { type: "sub", subId: "", event: "e", subscriberPath: null }],
+		["sub", { type: "sub", subId: 7, event: "e", subscriberPath: null }],
+		["sub", { type: "sub", subId: "s1", event: "", subscriberPath: null }],
+		["sub", { type: "sub", subId: "s1", event: 7, subscriberPath: null }],
+		["sub", { type: "sub", subId: "s1", event: "e", subscriberPath: 7 }],
+		["sub-ack", { type: "sub-ack", subId: "", level: "allow" }],
+		["sub-ack", { type: "sub-ack", subId: "s1", level: "maybe" }],
+		["event", { type: "event", subId: "", event: "e" }],
+		["event", { type: "event", subId: "s1", event: 7 }],
+		["unsub", { type: "unsub", subId: "" }],
+		["unsub", { type: "unsub" }]
+	])("rejects a malformed %s frame", (_type, message) => {
+		expect(parseFrame(message)).toBeNull();
+	});
+
+	it("parses the event-forwarding frames, keeping subscriberPath nullable and payload by presence", () => {
+		expect(parseFrame({ type: "sub", subId: "s1", event: "e", subscriberPath: "a.b" })).toEqual({
+			type: "sub",
+			subId: "s1",
+			event: "e",
+			subscriberPath: "a.b"
+		});
+		expect(parseFrame({ type: "sub-ack", subId: "s1", level: "notify" })).toEqual({ type: "sub-ack", subId: "s1", level: "notify" });
+		expect(parseFrame({ type: "unsub", subId: "s1" })).toEqual({ type: "unsub", subId: "s1" });
+		const withPayload = parseFrame({ type: "event", subId: "s1", event: "e", at: 1, instanceID: "i", payload: undefined });
+		expect(withPayload.hasPayload).toBe(true);
+		const without = parseFrame({ type: "event", subId: "s1", event: "e", at: 1, instanceID: "i" });
+		expect(without.hasPayload).toBe(false);
+		expect("payload" in without).toBe(false);
+	});
+
 	it("returns null for unknown frame types (forward compatibility)", () => {
 		expect(parseFrame({ type: "stream", callId: "n#1" })).toBeNull();
 		expect(parseFrame({ type: "surface2", v: 1, leaves: [] })).toBeNull();
