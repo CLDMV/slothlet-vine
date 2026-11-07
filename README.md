@@ -16,17 +16,18 @@ That gating follows slothlet's own rule about **who is calling**: a call made by
 
 ## ✨ What's New
 
-### Latest: v1.4.1 (November 2026)
+### Latest: v1.5.0 (November 2026)
 
-- **`engines.node` is now `>=22.15.0` ([#107](https://github.com/CLDMV/slothlet-vine/pull/107))** — v1.4.0 declared `>=22.22.0`, the floor of the development toolchain rather than of the package. The runtime floor is now the one `@cldmv/slothlet` declares, and `import` and `require()` both work from 22.15.0. The 22.22.0 toolchain floor moves to `devEngines`, so it only applies when working on this repository. The vine runtime is unchanged.
-- [View full v1.4.1 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.4.1.md)
+- **Type declarations** — the package now ships `.d.mts` declarations in `types/`, with a `types` condition on every export, so `grow()`, `serve()` and each transport subpath type-check in TypeScript and complete in editors with no `@types` package. The source passes a strict type-check, and CI runs it as `types:check` ([#114](https://github.com/CLDMV/slothlet-vine/pull/114), resolves [#113](https://github.com/CLDMV/slothlet-vine/issues/113)). The vine runtime is unchanged.
+- **100% test coverage, enforced** — the suite covers every line, branch, function and statement in `src/`, and the coverage run fails below 100% ([#115](https://github.com/CLDMV/slothlet-vine/pull/115)). Tests also run against `src/` through `devCondition()` now ([#111](https://github.com/CLDMV/slothlet-vine/pull/111)).
+- [View full v1.5.0 Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.5.0.md)
 
 ### Recent Releases
 
+- **v1.4.1** (November 2026) — `engines.node` is `>=22.15.0`, the `@cldmv/slothlet` peer's floor; the 22.22.0 toolchain floor moves to `devEngines` ([#107](https://github.com/CLDMV/slothlet-vine/pull/107)) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.4.1.md))
 - **v1.4.0** (November 2026) — CommonJS entries for every subpath and a real tsup build into `dist/`, plus a `slothlet-vine-dev` condition for checkouts; declared Node.js `>=22.22.0` (#101) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.4.0.md))
 - **v1.3.0** (October 2026) — per-call requested context: `link.with(context, fn)` / `grow({ context })` on the caller, a `serve({ context })` host check on the server, and the new `VINE_CONTEXT` code; opt-in and wire compatible (#80) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.3.0.md))
 - **v1.2.2** (October 2026) — dev-tooling bump only: `@cldmv/fix-headers` 2.2.0 and `@cldmv/configs` 1.2.4, so a header-only rewrite keeps `@Last modified by`; no runtime change (#72, #75) ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.2.md))
-- **v1.2.1** (October 2026) — dev-tooling dependency refresh in the lockfile only (`vitest` 5.0.3, `@cldmv/vitest-runner` 1.5.1, jsonv lint/format packages, `ws` for the transport tests); no runtime changes ([Changelog](https://github.com/CLDMV/slothlet-vine/blob/master/docs/changelog/v1/v1.2.1.md))
 
 📚 **For complete version history and detailed release notes, see the [docs/changelog/](https://github.com/CLDMV/slothlet-vine/tree/master/docs/changelog/) folder.**
 
