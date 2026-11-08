@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:22-07:00 (1790968822)
+ *	@Last modified time: 2026-11-07T22:22:25-08:00 (1794118945)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { PendingTable, assertApi, assertChannel, makeNonce, onCloseSafe } from "../src/lib/link.mjs";
-import { CODES, VineError } from "../src/lib/errors.mjs";
+import { CODES, VineError } from "@cldmv/slothlet-vine";
 
 /**
  * @returns {PendingTable} A table with a fixed nonce, for predictable ids.

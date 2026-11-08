@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-11-01T16:35:25-08:00 (1793579725)
+ *	@Last modified time: 2026-11-07T22:22:25-08:00 (1794118945)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -17,7 +17,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { grow, serve, CODES, VineError, VineRemoteError, DEFAULT_BUDGET_MS } from "../src/index.mjs";
+import { grow, serve, CODES, VineError, VineRemoteError, DEFAULT_BUDGET_MS } from "@cldmv/slothlet-vine";
 
 /** Transports still awaiting their own implementation pass. @type {string[]} */
 const SCAFFOLD_TRANSPORTS = [];

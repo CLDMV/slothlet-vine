@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:17-07:00 (1790968817)
+ *	@Last modified time: 2026-11-07T22:22:19-08:00 (1794118939)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -22,7 +22,7 @@ import { MessageChannel, Worker } from "node:worker_threads";
 import { WebSocketServer, WebSocket } from "ws";
 import slothlet from "@cldmv/slothlet";
 
-import { grow, serve } from "../src/index.mjs";
+import { grow, serve } from "@cldmv/slothlet-vine";
 import * as workerThreads from "../src/transport/worker-threads.mjs";
 import * as postMessage from "../src/transport/post-message.mjs";
 import * as processTransport from "../src/transport/process.mjs";

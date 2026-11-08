@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:15-07:00 (1790968815)
+ *	@Last modified time: 2026-11-07T22:22:16-08:00 (1794118936)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -18,9 +18,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import slothlet from "@cldmv/slothlet";
 
-import { grow, serve } from "../src/index.mjs";
-import { CODES, VineRemoteError } from "../src/lib/errors.mjs";
-import { createPair } from "../src/transport/loopback.mjs";
+import { grow, serve } from "@cldmv/slothlet-vine";
+import { CODES, VineRemoteError } from "@cldmv/slothlet-vine";
+import { createPair } from "@cldmv/slothlet-vine/transport/loopback";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PRINCIPAL_DIR = path.join(here, "fixtures", "principal-api");

@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-06T12:00:00-07:00 (1791313200)
+ *	@Last modified time: 2026-11-07T22:22:16-08:00 (1794118936)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -24,10 +24,10 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import slothlet from "@cldmv/slothlet";
 
-import { grow, serve } from "../src/index.mjs";
-import { CODES, VineError, VineRemoteError } from "../src/lib/errors.mjs";
-import { createPair } from "../src/transport/loopback.mjs";
-import { createChannel as createWsChannel } from "../src/transport/websocket.mjs";
+import { grow, serve } from "@cldmv/slothlet-vine";
+import { CODES, VineError, VineRemoteError } from "@cldmv/slothlet-vine";
+import { createPair } from "@cldmv/slothlet-vine/transport/loopback";
+import { createChannel as createWsChannel } from "@cldmv/slothlet-vine/transport/websocket";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CONTEXT_DIR = path.join(here, "fixtures", "context-api");
