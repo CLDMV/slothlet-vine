@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:22-07:00 (1790968822)
+ *	@Last modified time: 2026-11-07T22:22:25-08:00 (1794118945)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -22,12 +22,12 @@ import { fork } from "node:child_process";
 import { WebSocketServer, WebSocket } from "ws";
 import slothlet from "@cldmv/slothlet";
 
-import { grow, serve } from "../src/index.mjs";
-import { CODES } from "../src/lib/errors.mjs";
-import { createChannel as createPostMessageChannel } from "../src/transport/post-message.mjs";
-import { createParentChannel as createWorkerParentChannel } from "../src/transport/worker-threads.mjs";
-import { createChannel as createProcessChannel } from "../src/transport/process.mjs";
-import { createChannel as createWebSocketChannel } from "../src/transport/websocket.mjs";
+import { grow, serve } from "@cldmv/slothlet-vine";
+import { CODES } from "@cldmv/slothlet-vine";
+import { createChannel as createPostMessageChannel } from "@cldmv/slothlet-vine/transport/post-message";
+import { createParentChannel as createWorkerParentChannel } from "@cldmv/slothlet-vine/transport/worker-threads";
+import { createChannel as createProcessChannel } from "@cldmv/slothlet-vine/transport/process";
+import { createChannel as createWebSocketChannel } from "@cldmv/slothlet-vine/transport/websocket";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVE_DIR = path.join(here, "fixtures", "serve-api");
