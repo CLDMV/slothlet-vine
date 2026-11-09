@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:17-07:00 (1790968817)
+ *	@Last modified time: 2026-11-07T22:22:19-08:00 (1794118939)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -20,10 +20,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import slothlet from "@cldmv/slothlet";
 
-import { grow } from "../src/index.mjs";
-import { CODES, VineError, VineRemoteError } from "../src/lib/errors.mjs";
-import { createChannel, createParentChannel } from "../src/transport/worker-threads.mjs";
-import { channelConformance } from "../src/testing/conformance.mjs";
+import { grow } from "@cldmv/slothlet-vine";
+import { CODES, VineError, VineRemoteError } from "@cldmv/slothlet-vine";
+import { createChannel, createParentChannel } from "@cldmv/slothlet-vine/transport/worker-threads";
+import { channelConformance } from "@cldmv/slothlet-vine/testing";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const GROW_DIR = path.join(here, "fixtures", "grow-api");

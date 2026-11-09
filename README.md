@@ -154,7 +154,7 @@ The published package runs from the built `dist/`. In a clone of this repository
 | `node --conditions=slothlet-vine-dev app.mjs`              | `src/`                                                 |
 | `NODE_OPTIONS=--conditions=slothlet-vine-dev node app.mjs` | `src/`                                                 |
 
-`npm test` runs the vitest suite against `src/` (the vitest config passes the condition), then builds and runs `tests/cjs/entry.test.cjs` with `node --test` against `dist/`.
+`npm test` runs the vitest suite against `src/` (the vitest config passes the condition), then builds and runs `tests/cjs/entry.test.cjs` with `node --test` against `dist/`. `npm run test:dist` builds and runs the vitest suite against `dist/` instead.
 
 ---
 
