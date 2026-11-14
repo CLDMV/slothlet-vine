@@ -7,14 +7,14 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:17-07:00 (1790968817)
+ *	@Last modified time: 2026-11-07T22:22:20-08:00 (1794118940)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
  */
 
 import { describe, it, expect } from "vitest";
-import { CODES, VineError, VineRemoteError, fromWire, toWire } from "../src/lib/errors.mjs";
+import { CODES, VineError, VineRemoteError, fromWire, toWire } from "@cldmv/slothlet-vine";
 
 describe("CODES", () => {
 	it("carries every code the design names, frozen", () => {
