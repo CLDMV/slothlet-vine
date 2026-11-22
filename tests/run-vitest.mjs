@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:23-07:00 (1790968823)
+ *	@Last modified time: 2026-11-21T21:02:31-08:00 (1795323751)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -25,6 +25,10 @@
  *   node tests/run-vitest.mjs --coverage      # with coverage (verbose)
  *   node tests/run-vitest.mjs --coverage-quiet # with coverage (progress bar + summary)
  *   node tests/run-vitest.mjs <pattern...>     # filter by path/name
+ *   node tests/run-vitest.mjs --isolate        # own PID namespace (Linux; skipped when already in one)
+ *   node tests/run-vitest.mjs --isolate=force  # own PID namespace even inside a container or pod
+ *
+ *   Without a flag, CLDMV_TEST_ISOLATE (`1` or `force`) decides.
  *
  *   Args before a `--` delimiter are forwarded to Vitest; args after it are test
  *   patterns. A value-taking flag needs the delimiter, e.g.:
@@ -47,7 +51,11 @@ const testPatterns = delimiter === -1 ? argv.filter((a) => !a.startsWith("-")) :
 
 const coverageQuiet = forwarded.includes("--coverage-quiet");
 const coverage = coverageQuiet || forwarded.includes("--coverage");
-const passthrough = forwarded.filter((a) => a !== "--coverage" && a !== "--coverage-quiet");
+// --isolate / --isolate=force turn on vitest-runner's PID-namespace isolation for this run.
+// Without either, run() falls back to CLDMV_TEST_ISOLATE.
+const isolateFlag = forwarded.findLast((a) => a === "--isolate" || a === "--isolate=force");
+const isolate = isolateFlag === "--isolate=force" ? "force" : isolateFlag ? true : undefined;
+const passthrough = forwarded.filter((a) => a !== "--coverage" && a !== "--coverage-quiet" && a !== "--isolate" && a !== "--isolate=force");
 
 // VITEST_WORKERS overrides the worker count; ignore an unset / invalid / non-positive value.
 const parsedWorkers = parseInt(process.env.VITEST_WORKERS ?? "", 10);
@@ -62,6 +70,7 @@ const code = await run({
 	testPatterns,
 	workers,
 	coverageQuiet,
+	...(isolate !== undefined && { isolate }),
 	vitestArgs: [...(coverage ? ["--coverage"] : []), ...passthrough],
 	nodeEnv: process.env.NODE_ENV || "development"
 });
