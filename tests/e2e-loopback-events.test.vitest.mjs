@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:16-07:00 (1790968816)
+ *	@Last modified time: 2026-11-07T22:22:17-08:00 (1794118937)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -19,8 +19,8 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import slothlet from "@cldmv/slothlet";
 
-import { grow, serve } from "../src/index.mjs";
-import { createPair } from "../src/transport/loopback.mjs";
+import { grow, serve } from "@cldmv/slothlet-vine";
+import { createPair } from "@cldmv/slothlet-vine/transport/loopback";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVE_DIR = path.join(here, "fixtures", "serve-api");

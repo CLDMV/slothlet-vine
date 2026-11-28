@@ -7,15 +7,15 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-10-02T12:20:23-07:00 (1790968823)
+ *	@Last modified time: 2026-11-07T22:22:26-08:00 (1794118946)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
  */
 
 import { describe, it, expect } from "vitest";
-import { serve } from "../src/serve.mjs";
-import { CODES } from "../src/lib/errors.mjs";
+import { serve } from "@cldmv/slothlet-vine";
+import { CODES } from "@cldmv/slothlet-vine";
 
 /**
  * A Channel that records every outbound frame and lets a test push frames at the registered handler.

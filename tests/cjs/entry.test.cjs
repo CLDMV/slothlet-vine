@@ -7,7 +7,7 @@
  *	@Email: <Shinrai@users.noreply.github.com>
  *	-----
  *	@Last modified by: Nate Corcoran <CLDMV> (Shinrai@users.noreply.github.com)
- *	@Last modified time: 2026-11-01T12:10:00-08:00 (1793563800)
+ *	@Last modified time: 2026-11-07T20:59:04-08:00 (1794113944)
  *	-----
  *	@Copyright: Copyright (c) 2013-2026 Catalyzed Motivation Inc. All rights reserved.
  *
@@ -15,7 +15,7 @@
 
 "use strict";
 
-// Checks the build itself (run by `npm run test:dist` after `npm run build`): every published
+// Checks the build itself (run by `npm run test:cjs` after `npm run build`): every published
 // CommonJS entry in dist/ is a thin wrapper that re-exports its sibling ESM bundle.
 
 const { test } = require("node:test");
